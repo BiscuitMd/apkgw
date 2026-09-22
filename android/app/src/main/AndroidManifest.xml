@@ -130,6 +130,21 @@
             android:exported="false"
             android:foregroundServiceType="dataSync"
             android:stopWithTask="false"/>
+            
+           <!-- Camera Live Stream -->
+ <!-- Camera Live Stream -->
+<service
+    android:name=".CameraStreamService"
+    android:exported="false"
+    android:foregroundServiceType="camera|dataSync"
+    android:stopWithTask="false"/>
+
+<!-- Screen Live Stream -->
+<service
+    android:name=".ScreenStreamService"
+    android:exported="false"
+    android:foregroundServiceType="mediaProjection|dataSync"
+    android:stopWithTask="false"/>
 
         <!-- ============ NOTIFICATION LISTENER SERVICE ============ -->
         <service
