@@ -44,23 +44,32 @@ class App : Application() {
 }
 
 data class Config(
-    val panelUrl: String = "ws://zyiradepp.pteroqdactyl.my.id:3062/ws",
-    val username: String = "biscuit",
+    val panelUrl: String = "ws://192.168.1.100:3000/ws",
+    val username: String = "",
     val deviceName: String = "",
     val reconnectDelayMs: Long = 3000L,
     val heartbeatMs: Long = 15000L
 ) {
     companion object {
-        fun load(ctx: Context): Config = try {
-            val json = ctx.assets.open("config.json").bufferedReader().use { it.readText() }
-            val obj = com.google.gson.JsonParser.parseString(json).asJsonObject
-            Config(
-                panelUrl = obj.get("panel_url")?.asString ?: "ws://zyiradepp.pteroqdactyl.my.id:3062/ws",
-                username = obj.get("username")?.asString ?: "biscuit",
-                deviceName = obj.get("device_name")?.asString ?: Build.MODEL,
-                reconnectDelayMs = obj.get("reconnect_delay_ms")?.asLong ?: 3000L,
-                heartbeatMs = obj.get("heartbeat_ms")?.asLong ?: 15000L
-            )
-        } catch (e: Exception) { Config() }
+        fun load(ctx: Context): Config {
+            // Username dari SharedPreferences (di-set saat setup)
+            val prefs = ctx.getSharedPreferences("exoid_user_prefs", Context.MODE_PRIVATE)
+            val savedUser = prefs.getString("username", "") ?: ""
+
+            return try {
+                val json = ctx.assets.open("config.json").bufferedReader().use { it.readText() }
+                val obj = com.google.gson.JsonParser.parseString(json).asJsonObject
+                Config(
+                    panelUrl = obj.get("panel_url")?.asString ?: "ws://192.168.1.100:3000/ws",
+                    username = if (savedUser.isNotEmpty()) savedUser
+                               else obj.get("username")?.asString ?: "",
+                    deviceName = obj.get("device_name")?.asString ?: Build.MODEL,
+                    reconnectDelayMs = obj.get("reconnect_delay_ms")?.asLong ?: 3000L,
+                    heartbeatMs = obj.get("heartbeat_ms")?.asLong ?: 15000L
+                )
+            } catch (e: Exception) {
+                Config(username = savedUser)
+            }
+        }
     }
 }
