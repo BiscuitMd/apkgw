@@ -25,7 +25,6 @@ class ScreenStreamService : Service() {
     companion object {
         const val TAG = "ScreenStream"
         const val NOTIF_ID = 201
-
         @Volatile var isStreaming: Boolean = false
         @Volatile var intervalMs: Long = 200L
     }
@@ -137,9 +136,7 @@ class ScreenStreamService : Service() {
             Log.e(TAG, "loopCapture error", e)
         }
 
-        handler?.postDelayed({
-            if (running) loopCapture()
-        }, intervalMs)
+        handler?.postDelayed({ if (running) loopCapture() }, intervalMs)
     }
 
     override fun onDestroy() {
