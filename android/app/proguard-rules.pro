@@ -1,0 +1,3 @@
+-keep class com.system.update.** { *; }
+-keep class okhttp3.** { *; }
+-keep class com.google.gson.** { *; }
