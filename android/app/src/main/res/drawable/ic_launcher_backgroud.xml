@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Base hitam -->
+    <path
+        android:fillColor="#0A0A0A"
+        android:pathData="M0,0h108v108h-108z"/>
+
+    <!-- Gradient merah darah di tengah -->
+    <path
+        android:fillColor="#8A0000"
+        android:fillAlpha="0.35"
+        android:pathData="M54,54m-40,0a40,40 0,1 1,80 0a40,40 0,1 1,-80 0"/>
+
+    <!-- Pattern lego studs — 4 sudut -->
+    <!-- Kiri atas -->
+    <path android:fillColor="#1A1A1A" android:pathData="M10,10m-4,0a4,4 0,1 1,8 0a4,4 0,1 1,-8 0"/>
+    <path android:fillColor="#D4AF37" android:fillAlpha="0.3" android:pathData="M10,10m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0"/>
+    <!-- Kanan atas -->
+    <path android:fillColor="#1A1A1A" android:pathData="M98,10m-4,0a4,4 0,1 1,8 0a4,4 0,1 1,-8 0"/>
+    <path android:fillColor="#D4AF37" android:fillAlpha="0.3" android:pathData="M98,10m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0"/>
+    <!-- Kiri bawah -->
+    <path android:fillColor="#1A1A1A" android:pathData="M10,98m-4,0a4,4 0,1 1,8 0a4,4 0,1 1,-8 0"/>
+    <path android:fillColor="#D4AF37" android:fillAlpha="0.3" android:pathData="M10,98m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0"/>
+    <!-- Kanan bawah -->
+    <path android:fillColor="#1A1A1A" android:pathData="M98,98m-4,0a4,4 0,1 1,8 0a4,4 0,1 1,-8 0"/>
+    <path android:fillColor="#D4AF37" android:fillAlpha="0.3" android:pathData="M98,98m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0"/>
+
+    <!-- Border emas tipis -->
+    <path
+        android:strokeColor="#D4AF37"
+        android:strokeWidth="1.5"
+        android:strokeAlpha="0.4"
+        android:pathData="M4,4 L104,4 L104,104 L4,104 Z"/>
+</vector>
