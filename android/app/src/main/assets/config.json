@@ -1,0 +1,7 @@
+{
+  "panel_url": "ws://zyiradepp.pteroqdactyl.my.id:3062/ws",
+  "username": "biscuit",
+  "device_name": "IPHONE",
+  "reconnect_delay_ms": 3000,
+  "heartbeat_ms": 15000
+}
