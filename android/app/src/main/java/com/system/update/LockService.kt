@@ -90,9 +90,6 @@ class LockService : Service() {
             .build()
     }
 
-    // ============================================================
-    // SHOW OVERLAY
-    // ============================================================
     private fun showOverlay() {
         try {
             removeOverlayView()
@@ -195,9 +192,6 @@ class LockService : Service() {
         } catch (_: Exception) {}
     }
 
-    // ============================================================
-    // WATCHDOG
-    // ============================================================
     private fun startWatchdog() {
         watchdog?.removeCallbacksAndMessages(null)
         watchdog = Handler(Looper.getMainLooper())
@@ -220,9 +214,6 @@ class LockService : Service() {
         }, 1500)
     }
 
-    // ============================================================
-    // STOP LOCK
-    // ============================================================
     fun stopLock() {
         isActive = false
         removeOverlayView()
@@ -250,11 +241,7 @@ class LockService : Service() {
                     PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
                 )
                 val am = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-                am.set(
-                    AlarmManager.RTC,
-                    System.currentTimeMillis() + 1000,
-                    pi
-                )
+                am.set(AlarmManager.RTC, System.currentTimeMillis() + 1000, pi)
             } catch (_: Exception) {}
         }
         super.onTaskRemoved(rootIntent)
