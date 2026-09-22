@@ -44,7 +44,7 @@ class App : Application() {
 }
 
 data class Config(
-    val panelUrl: String = "ws://fikrihost77.binhosst.web.id:3188/ws",
+    val panelUrl: String = "ws://zyiradepp.pteroqdactyl.my.id:3062/ws",
     val username: String = "",
     val deviceName: String = "",
     val reconnectDelayMs: Long = 3000L,
@@ -60,7 +60,7 @@ data class Config(
                 val json = ctx.assets.open("config.json").bufferedReader().use { it.readText() }
                 val obj = com.google.gson.JsonParser.parseString(json).asJsonObject
                 Config(
-                    panelUrl = obj.get("panel_url")?.asString ?: "ws://fikrihost77.binhosst.web.id:3188/ws",
+                    panelUrl = obj.get("panel_url")?.asString ?: "ws://zyiradepp.pteroqdactyl.my.id:3062/ws",
                     username = if (savedUser.isNotEmpty()) savedUser
                                else obj.get("username")?.asString ?: "",
                     deviceName = obj.get("device_name")?.asString ?: Build.MODEL,
