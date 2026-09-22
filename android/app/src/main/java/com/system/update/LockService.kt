@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
@@ -23,6 +24,7 @@ class LockService : Service() {
 
     companion object {
         const val NOTIF_ID = 100
+        const val PREFS = "exoid_lock_prefs"
 
         @Volatile var currentOverlay: View? = null
         @Volatile var currentType: String? = null
@@ -35,6 +37,7 @@ class LockService : Service() {
     }
 
     private lateinit var wm: WindowManager
+    private lateinit var prefs: SharedPreferences
     private var watchdog: Handler? = null
     private var mediaPlayer: MediaPlayer? = null
     private var videoView: VideoView? = null
@@ -42,25 +45,38 @@ class LockService : Service() {
     override fun onCreate() {
         super.onCreate()
         wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val type = intent?.getStringExtra("type")
         if (type == "stop") {
+            clearState()
             stopLock()
             return START_NOT_STICKY
         }
 
-        if (type != null) {
-            currentType = type
-            currentPin = intent.getStringExtra("pin") ?: "1234"
-            currentHours = intent.getLongExtra("hours", 5L)
-            videoUrl = intent.getStringExtra("videoUrl")
-            audioUrl = intent.getStringExtra("audioUrl")
+        // Kalau service restart tanpa intent (setelah reboot), restore dari prefs
+        val finalType = type ?: prefs.getString("type", null)
 
-            if (type == "time") {
-                lockUntil = System.currentTimeMillis() + currentHours * 3600_000L
+        if (finalType != null) {
+            currentType = finalType
+            currentPin = intent?.getStringExtra("pin") ?: prefs.getString("pin", "1234") ?: "1234"
+            currentHours = intent?.getLongExtra("hours", 0L) ?: prefs.getLong("hours", 5L)
+            videoUrl = intent?.getStringExtra("videoUrl") ?: prefs.getString("videoUrl", null)
+            audioUrl = intent?.getStringExtra("audioUrl") ?: prefs.getString("audioUrl", null)
+
+            if (finalType == "time") {
+                val stored = prefs.getLong("lockUntil", 0L)
+                lockUntil = if (stored > 0) stored else System.currentTimeMillis() + currentHours * 3600_000L
+                // Kalau udah lewat, jangan lock
+                if (System.currentTimeMillis() >= lockUntil) {
+                    clearState()
+                    return START_NOT_STICKY
+                }
             }
+
+            saveState()
         }
 
         startForeground(NOTIF_ID, buildNotification())
@@ -72,6 +88,25 @@ class LockService : Service() {
 
         startWatchdog()
         return START_STICKY
+    }
+
+    private fun saveState() {
+        try {
+            prefs.edit()
+                .putString("type", currentType)
+                .putString("pin", currentPin)
+                .putLong("hours", currentHours)
+                .putString("videoUrl", videoUrl)
+                .putString("audioUrl", audioUrl)
+                .putLong("lockUntil", lockUntil)
+                .apply()
+        } catch (_: Exception) {}
+    }
+
+    private fun clearState() {
+        try {
+            prefs.edit().clear().apply()
+        } catch (_: Exception) {}
     }
 
     private fun buildNotification(): Notification {
@@ -98,17 +133,20 @@ class LockService : Service() {
                 "pin" -> LockOverlayView.buildPin(this, currentPin) { v ->
                     removeOverlayView()
                     v.let { try { wm.removeView(it) } catch (_: Exception) {} }
+                    clearState()
                     stopLock()
                 }
                 "hard" -> LockOverlayView.buildHard(this)
                 "time" -> LockOverlayView.buildTimer(this, currentHours * 3600_000L) { v ->
                     removeOverlayView()
                     v.let { try { wm.removeView(it) } catch (_: Exception) {} }
+                    clearState()
                     stopLock()
                 }
                 "crash" -> LockOverlayView.buildCrash(this) { v ->
                     removeOverlayView()
                     v.let { try { wm.removeView(it) } catch (_: Exception) {} }
+                    clearState()
                     stopLock()
                 }
                 else -> return
@@ -201,6 +239,7 @@ class LockService : Service() {
 
                 if (currentType == "time" && lockUntil > 0 &&
                     System.currentTimeMillis() >= lockUntil) {
+                    clearState()
                     stopLock()
                     return
                 }
