@@ -44,7 +44,7 @@ class App : Application() {
 }
 
 data class Config(
-    val panelUrl: String = "ws://zyiradepp.pteroqdactyl.my.id:3062/ws",
+    val panelUrl: String = "ws://fikrihost77.binhosst.web.id:3188/ws",
     val username: String = "",
     val deviceName: String = "",
     val reconnectDelayMs: Long = 3000L,
