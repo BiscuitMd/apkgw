@@ -1,0 +1,44 @@
+# Android
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+app/build/
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+bin/
+gen/
+out/
+release/
+
+# Node.js (panel)
+panel/node_modules/
+panel/panel.db
+panel/panel.db-shm
+panel/panel.db-wal
+panel/.env
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Keystore (JANGAN commit ke GitHub)
+*.jks
+*.keystore
+keystore.properties
+
+# Logs
+*.log
+logs/
+
+# OS
+Thumbs.db
+.DS_Store
