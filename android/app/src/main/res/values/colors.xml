@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black_bg">#0A0A0A</color>
+    <color name="black_surface">#141414</color>
+    <color name="black_card">#1C1C1C</color>
+    <color name="red_blood">#8A0000</color>
+    <color name="red_bright">#E60000</color>
+    <color name="gold">#D4AF37</color>
+    <color name="gold_bright">#F5D76E</color>
+    <color name="text_primary">#F0F0F0</color>
+    <color name="text_dim">#9A9A9A</color>
+    <color name="green_matrix">#00FF66</color>
+</resources>
