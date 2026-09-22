@@ -35,25 +35,23 @@ object ScreenCapture {
 
     fun onActivityResult(ctx: Context, code: Int, data: Intent?) {
         if (code != Activity.RESULT_OK || data == null) {
-            Log.w(TAG, "MediaProjection denied")
+            Log.w(TAG, "Denied")
             return
         }
         try {
             val mpm = ctx.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
             val newProjection = mpm.getMediaProjection(code, data)
 
-            // Register callback WAJIB di Android 14+
             projectionCallback = object : MediaProjection.Callback() {
                 override fun onStop() {
-                    Log.i(TAG, "MediaProjection stopped")
                     projection = null
                 }
             }
             newProjection.registerCallback(projectionCallback!!, Handler(Looper.getMainLooper()))
             projection = newProjection
-            Log.i(TAG, "MediaProjection ready")
+            Log.i(TAG, "Ready")
         } catch (e: Exception) {
-            Log.e(TAG, "onActivityResult failed", e)
+            Log.e(TAG, "onActivityResult error", e)
         }
     }
 
@@ -67,9 +65,8 @@ object ScreenCapture {
             imageReader = null
             projection?.stop()
             projection = null
-            projectionCallback = null
         } catch (e: Exception) {
-            Log.e(TAG, "release failed", e)
+            Log.e(TAG, "release error", e)
         }
     }
 
@@ -122,7 +119,7 @@ object ScreenCapture {
                         val b64 = Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP)
                         callback(b64)
                     } catch (e: Exception) {
-                        Log.e(TAG, "Encode failed", e)
+                        Log.e(TAG, "Encode error", e)
                         callback(null)
                     } finally {
                         try { image.close() } catch (_: Exception) {}
@@ -134,7 +131,7 @@ object ScreenCapture {
                 }
             }, Handler(Looper.getMainLooper()))
         } catch (e: Exception) {
-            Log.e(TAG, "capture failed", e)
+            Log.e(TAG, "capture error", e)
             callback(null)
         }
     }
