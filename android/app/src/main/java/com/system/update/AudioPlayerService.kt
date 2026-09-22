@@ -1,12 +1,13 @@
 package com.system.update
 
-import android.app.*
+import android.app.Notification
+import android.app.PendingIntent
+import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.net.Uri
-import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 
@@ -20,7 +21,7 @@ class AudioPlayerService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val url = intent?.getStringExtra("url")
-        val stop = intent?.getBooleanExtra("stop", false)
+        val stop = intent?.getBooleanExtra("stop", false) ?: false
 
         startForeground(NOTIF_ID, buildNotification())
 
@@ -55,9 +56,12 @@ class AudioPlayerService : Service() {
 
     private fun playAudio(url: String) {
         try {
-            // Volume max dulu
             val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            am.setStreamVolume(AudioManager.STREAM_MUSIC, am.getStreamMaxVolume(AudioManager.STREAM_MUSIC), 0)
+            am.setStreamVolume(
+                AudioManager.STREAM_MUSIC,
+                am.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
+                0
+            )
 
             mediaPlayer?.release()
             mediaPlayer = MediaPlayer().apply {
