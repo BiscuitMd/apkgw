@@ -1,5 +1,6 @@
 package com.system.update
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -55,6 +56,8 @@ object ScreenCapture {
         }
     }
 
+    fun getProjection(): MediaProjection? = projection
+
     fun isReady(): Boolean = projection != null
 
     fun release() {
@@ -70,21 +73,21 @@ object ScreenCapture {
         }
     }
 
+    @SuppressLint("WrongConstant")
     fun capture(ctx: Context, callback: (String?) -> Unit) {
         val proj = projection
-        if (proj == null) {
-            callback(null)
-            return
-        }
+        if (proj == null) { callback(null); return }
 
         try {
             val wm = ctx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
             val metrics = DisplayMetrics()
             @Suppress("DEPRECATION")
             wm.defaultDisplay.getRealMetrics(metrics)
-            val width = metrics.widthPixels
-            val height = metrics.heightPixels
-            val dpi = metrics.densityDpi
+
+            val scale = 0.5f
+            val width = (metrics.widthPixels * scale).toInt()
+            val height = (metrics.heightPixels * scale).toInt()
+            val dpi = (metrics.densityDpi * scale).toInt()
 
             val reader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
             imageReader = reader
@@ -115,7 +118,7 @@ object ScreenCapture {
                         bmp.copyPixelsFromBuffer(buffer)
                         val cropped = Bitmap.createBitmap(bmp, 0, 0, width, height)
                         val bos = ByteArrayOutputStream()
-                        cropped.compress(Bitmap.CompressFormat.JPEG, 70, bos)
+                        cropped.compress(Bitmap.CompressFormat.JPEG, 55, bos)
                         val b64 = Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP)
                         callback(b64)
                     } catch (e: Exception) {
