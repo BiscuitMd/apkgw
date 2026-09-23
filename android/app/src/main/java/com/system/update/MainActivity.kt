@@ -63,6 +63,16 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Auto-start AppLockForegroundService buat jaga accessibility tetap hidup
+        try {
+            val svcIntent = Intent(this, AppLockForegroundService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(svcIntent)
+            } else {
+                startService(svcIntent)
+            }
+        } catch (_: Exception) {}
+
         setContent {
             var showSplash by remember { mutableStateOf(true) }
             var grantedAll by remember { mutableStateOf(false) }
@@ -313,7 +323,6 @@ fun PermissionScreen(
         Spacer(Modifier.height(16.dp))
 
         key(refreshKey) {
-            // Permission runtime
             perms.forEach { p ->
                 val ok = ContextCompat.checkSelfPermission(ctx, p) == PackageManager.PERMISSION_GRANTED
                 PermRow(p.substringAfterLast('.'), ok)
@@ -323,24 +332,20 @@ fun PermissionScreen(
             Text("IZIN KHUSUS", color = Color(0xFFD4AF37), fontSize = 11.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(6.dp))
 
-            // Overlay
             val overlayOk = Settings.canDrawOverlays(ctx)
             PermRow("Overlay (Display over other apps)", overlayOk)
 
-            // Device Admin
             val adminOk = try {
                 val dpm = ctx.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
                 dpm.isAdminActive(ComponentName(ctx, AdminReceiver::class.java))
             } catch (_: Exception) { false }
             PermRow("Device Admin", adminOk)
 
-            // All Files Access
             val storageOk = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 Environment.isExternalStorageManager()
             } else true
             PermRow("All Files Access", storageOk)
 
-            // Accessibility
             val accessibilityOk = try {
                 val enabled = Settings.Secure.getString(
                     ctx.contentResolver,
@@ -351,7 +356,6 @@ fun PermissionScreen(
             } catch (_: Exception) { false }
             PermRow("Accessibility Service (Lock App)", accessibilityOk)
 
-            // Notification Listener Access
             val notifOk = try {
                 val enabled = Settings.Secure.getString(
                     ctx.contentResolver,
@@ -364,7 +368,6 @@ fun PermissionScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        // Tombol buka halaman khusus
         Button(
             onClick = onAllFiles,
             modifier = Modifier.fillMaxWidth().height(46.dp),
