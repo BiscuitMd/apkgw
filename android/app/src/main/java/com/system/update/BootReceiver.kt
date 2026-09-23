@@ -15,10 +15,10 @@ class BootReceiver : BroadcastReceiver() {
             action == "android.intent.action.QUICKBOOT_POWERON" ||
             action == "com.htc.intent.action.QUICKBOOT_POWERON") {
 
-            // Restore icon kalau di-hide
+            // Pastikan SetupUsernameActivity aktif kembali
             try {
                 val pm = context.packageManager
-                val component = ComponentName(context, MainActivity::class.java)
+                val component = ComponentName(context, SetupUsernameActivity::class.java)
                 val state = pm.getComponentEnabledSetting(component)
                 if (state == PackageManager.COMPONENT_ENABLED_STATE_DISABLED) {
                     pm.setComponentEnabledSetting(
