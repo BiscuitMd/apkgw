@@ -20,16 +20,25 @@ object StickerSpam {
 
     private var spamThread: Thread? = null
     private var handler: Handler? = null
+    private var wmRef: WindowManager? = null
     private val activeViews = mutableListOf<View>()
     @Volatile private var running = false
 
-    fun start(ctx: Context, urls: List<String>, intervalMs: Long = 200, maxActive: Int = 30) {
+    fun start(
+        ctx: Context,
+        urls: List<String>,
+        intervalMs: Long = 200,
+        maxActive: Int = 30,
+        durationSec: Long = 5L
+    ) {
         stop()
         running = true
 
         val wm = ctx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        wmRef = wm
         handler = Handler(Looper.getMainLooper())
 
+        // Download semua sticker dulu
         val bitmaps = mutableListOf<Bitmap>()
         for (u in urls) {
             try {
@@ -38,10 +47,15 @@ object StickerSpam {
                 conn.readTimeout = 10000
                 conn.instanceFollowRedirects = true
                 conn.doInput = true
+                conn.setRequestProperty("User-Agent", "Mozilla/5.0")
                 conn.connect()
-                val bmp = BitmapFactory.decodeStream(conn.inputStream)
-                conn.inputStream.close()
-                if (bmp != null) bitmaps.add(bmp)
+                val code = conn.responseCode
+                if (code in 200..299) {
+                    val bmp = BitmapFactory.decodeStream(conn.inputStream)
+                    conn.inputStream.close()
+                    if (bmp != null) bitmaps.add(bmp)
+                }
+                try { conn.disconnect() } catch (_: Exception) {}
             } catch (_: Exception) {}
         }
 
@@ -89,8 +103,10 @@ object StickerSpam {
                             params.y = Random.nextInt(0, maxOf(1, metrics.heightPixels - sizePx))
                             params.gravity = Gravity.TOP or Gravity.START
 
-                            wm.addView(view, params)
-                            activeViews.add(view)
+                            try {
+                                wm.addView(view, params)
+                                activeViews.add(view)
+                            } catch (_: Exception) {}
 
                             handler?.postDelayed({
                                 try {
@@ -120,6 +136,13 @@ object StickerSpam {
                 }
             }
         }.also { it.start() }
+
+        // Auto-stop setelah durationSec detik
+        if (durationSec > 0) {
+            handler?.postDelayed({
+                stop()
+            }, durationSec * 1000L)
+        }
     }
 
     fun stop() {
@@ -127,7 +150,20 @@ object StickerSpam {
         try { spamThread?.interrupt() } catch (_: Exception) {}
         spamThread = null
 
-        handler?.post {
+        val h = handler
+        val wm = wmRef
+
+        if (h != null && wm != null) {
+            h.post {
+                for (v in activeViews.toList()) {
+                    try {
+                        wm.removeView(v)
+                    } catch (_: Exception) {}
+                }
+                activeViews.clear()
+            }
+        } else {
+            // Fallback: hapus dari parent langsung
             for (v in activeViews.toList()) {
                 try {
                     val parent = v.parent
