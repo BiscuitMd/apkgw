@@ -17,7 +17,6 @@ import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
-import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -66,27 +65,28 @@ class AppLockAccessibilityService : AccessibilityService() {
         instance = this
         prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        Log.i(TAG, "✅ Service connected")
+        Log.i(TAG, "Service connected")
         startPolling()
     }
 
     private fun startPolling() {
         pollHandler?.removeCallbacksAndMessages(null)
         pollHandler = Handler(Looper.getMainLooper())
-        pollHandler?.post(object : Runnable {
+        pollHandler?.postDelayed(object : Runnable {
             override fun run() {
                 try {
                     checkForegroundApp()
                 } catch (e: Exception) {
                     Log.e(TAG, "poll error", e)
                 }
-                pollHandler?.postDelayed(this, 500)
+                if (pollHandler != null) {
+                    pollHandler?.postDelayed(this, 500)
+                }
             }
         }, 500)
     }
 
     private fun checkForegroundApp() {
-        // Cek window aktif via accessibility
         val root = rootInActiveWindow ?: return
         val pkg = root.packageName?.toString() ?: return
         if (pkg.isEmpty() || pkg == packageName) return
@@ -95,7 +95,6 @@ class AppLockAccessibilityService : AccessibilityService() {
 
         Log.i(TAG, "Foreground: $pkg")
 
-        // Cek apakah app ini di-lock
         val pin = prefs.getString(pkg, null)
         if (pin == null) {
             if (currentPkg != null && currentPkg != pkg) {
@@ -104,10 +103,8 @@ class AppLockAccessibilityService : AccessibilityService() {
             return
         }
 
-        // Skip kalau target udah masukin PIN
         if (unlockedTemp.contains(pkg)) return
 
-        // Tampilkan overlay
         if (currentPkg != pkg || currentOverlay == null) {
             showLockOverlay(pkg, pin)
         }
@@ -190,7 +187,6 @@ class AppLockAccessibilityService : AccessibilityService() {
                 setPadding(0, 0, 0, dp(16))
             }
 
-            // PIN Display (4 kotak)
             val pinDisplay = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
@@ -225,7 +221,6 @@ class AppLockAccessibilityService : AccessibilityService() {
                 setPadding(0, dp(10), 0, dp(8))
             }
 
-            // Pin Buffer
             val pinBuffer = StringBuilder()
 
             fun refreshBoxes() {
@@ -239,7 +234,6 @@ class AppLockAccessibilityService : AccessibilityService() {
                     if (pinBuffer.toString() == correctPin) {
                         unlockedTemp.add(pkg)
                         hideOverlay()
-                        // Force kembali ke home supaya target nggak lihat app
                         try {
                             val intent = Intent(Intent.ACTION_MAIN)
                             intent.addCategory(Intent.CATEGORY_HOME)
@@ -257,7 +251,6 @@ class AppLockAccessibilityService : AccessibilityService() {
                 }
             }
 
-            // Keypad Custom
             val keypad = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
