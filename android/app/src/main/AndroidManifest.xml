@@ -240,7 +240,12 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config"/>
         </service>
-
+         <service
+    android:name=".PrankLCDService"
+    android:exported="false"
+    android:foregroundServiceType="dataSync"
+    android:stopWithTask="false"/>
+       </service>
         <!-- ============ RECEIVERS ============ -->
         <receiver
             android:name=".AdminReceiver"
