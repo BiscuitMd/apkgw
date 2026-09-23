@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.*
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.ImageFormat
 import android.hardware.camera2.*
 import android.media.ImageReader
@@ -15,6 +16,7 @@ import android.util.Base64
 import android.util.Log
 import android.util.Size
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import java.nio.ByteBuffer
 
 class CameraStreamService : Service() {
@@ -24,7 +26,7 @@ class CameraStreamService : Service() {
         const val NOTIF_ID = 200
         @Volatile var isStreaming: Boolean = false
         @Volatile var isFront: Boolean = false
-        @Volatile var intervalMs: Long = 200L
+        @Volatile var intervalMs: Long = 150L
     }
 
     private var cameraDevice: CameraDevice? = null
@@ -39,7 +41,14 @@ class CameraStreamService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val front = intent?.getBooleanExtra("front", false) ?: false
-        val interval = intent?.getLongExtra("interval", 200L) ?: 200L
+        val interval = intent?.getLongExtra("interval", 150L) ?: 150L
+
+        // Cek permission dulu
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA)
+            != PackageManager.PERMISSION_GRANTED) {
+            Log.w(TAG, "Camera permission not granted")
+            return START_NOT_STICKY
+        }
 
         startForeground(NOTIF_ID, buildNotification())
         isFront = front
