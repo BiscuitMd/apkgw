@@ -9,6 +9,9 @@ import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
@@ -23,17 +26,20 @@ import android.widget.TextView
 class AppLockAccessibilityService : AccessibilityService() {
 
     companion object {
+        private const val TAG = "AppLockSvc"
         private const val PREFS = "exoid_app_lock"
         var instance: AppLockAccessibilityService? = null
 
         fun setLockedApp(ctx: Context, pkg: String, pin: String) {
             val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             prefs.edit().putString(pkg, pin).apply()
+            Log.i(TAG, "Locked: $pkg with pin=$pin")
         }
 
         fun unlockApp(ctx: Context, pkg: String) {
             val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             prefs.edit().remove(pkg).apply()
+            Log.i(TAG, "Unlocked: $pkg")
         }
 
         fun isLocked(ctx: Context, pkg: String): Boolean {
@@ -52,59 +58,76 @@ class AppLockAccessibilityService : AccessibilityService() {
     private var currentOverlay: View? = null
     private var currentPkg: String? = null
     private var unlockedTemp = mutableSetOf<String>()
+    private var pollHandler: Handler? = null
+    private var lastForegroundPkg: String? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
         prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        Log.i(TAG, "✅ Service connected")
+        startPolling()
+    }
+
+    private fun startPolling() {
+        pollHandler?.removeCallbacksAndMessages(null)
+        pollHandler = Handler(Looper.getMainLooper())
+        pollHandler?.post(object : Runnable {
+            override fun run() {
+                try {
+                    checkForegroundApp()
+                } catch (e: Exception) {
+                    Log.e(TAG, "poll error", e)
+                }
+                pollHandler?.postDelayed(this, 500)
+            }
+        }, 500)
+    }
+
+    private fun checkForegroundApp() {
+        // Cek window aktif via accessibility
+        val root = rootInActiveWindow ?: return
+        val pkg = root.packageName?.toString() ?: return
+        if (pkg.isEmpty() || pkg == packageName) return
+        if (pkg == lastForegroundPkg) return
+        lastForegroundPkg = pkg
+
+        Log.i(TAG, "Foreground: $pkg")
+
+        // Cek apakah app ini di-lock
+        val pin = prefs.getString(pkg, null)
+        if (pin == null) {
+            if (currentPkg != null && currentPkg != pkg) {
+                hideOverlay()
+            }
+            return
+        }
+
+        // Skip kalau target udah masukin PIN
+        if (unlockedTemp.contains(pkg)) return
+
+        // Tampilkan overlay
+        if (currentPkg != pkg || currentOverlay == null) {
+            showLockOverlay(pkg, pin)
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
-        if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
-
-        val pkg = event.packageName?.toString() ?: return
-        if (pkg == packageName) return
-
-        // Cek apakah lock overlay aktif — kalau ya, blokir semua app lain
-        val lockActive = LockService.isActive
-        if (lockActive) {
-            // Re-show lock overlay kalau target kabur
-            if (currentOverlay == null) {
-                try {
-                    val lockIntent = Intent(this, LockService::class.java)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        startForegroundService(lockIntent)
-                    } else {
-                        startService(lockIntent)
-                    }
-                } catch (_: Exception) {}
+        try {
+            if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+                event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) {
+                checkForegroundApp()
             }
-
-            // Blokir kalau target buka Settings atau App Info (biar nggak bisa uninstall)
-            if (pkg.contains("settings") || pkg.contains("packageinstaller")) {
-                try {
-                    performGlobalAction(GLOBAL_ACTION_BACK)
-                } catch (_: Exception) {}
-            }
-            return
+        } catch (e: Exception) {
+            Log.e(TAG, "event error", e)
         }
-
-        // App lock logic
-        val pin = prefs.getString(pkg, null)
-        if (pin == null) {
-            if (currentPkg == pkg) hideOverlay()
-            return
-        }
-
-        if (unlockedTemp.contains(pkg)) return
-        if (currentPkg == pkg && currentOverlay != null) return
-
-        showLockOverlay(pkg, pin)
     }
 
-    override fun onInterrupt() {}
+    override fun onInterrupt() {
+        Log.w(TAG, "Service interrupted")
+    }
 
     private fun dp(value: Int): Int = TypedValue.applyDimension(
         TypedValue.COMPLEX_UNIT_DIP,
@@ -126,7 +149,7 @@ class AppLockAccessibilityService : AccessibilityService() {
             val card = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                setPadding(dp(24), dp(32), dp(24), dp(32))
+                setPadding(dp(20), dp(28), dp(20), dp(28))
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
                     cornerRadius = 40f
@@ -137,26 +160,26 @@ class AppLockAccessibilityService : AccessibilityService() {
 
             val icon = TextView(this).apply {
                 text = "\uD83D\uDD12"
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 60f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 56f)
                 gravity = Gravity.CENTER
             }
 
             val title = TextView(this).apply {
                 text = "LOCK BY EXOID ENGINE \uD83D\uDE39"
                 setTextColor(Color.parseColor("#00FF66"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
                 setTypeface(null, Typeface.BOLD)
                 gravity = Gravity.CENTER
                 letterSpacing = 0.15f
-                setPadding(0, dp(12), 0, dp(4))
+                setPadding(0, dp(10), 0, dp(4))
             }
 
             val sub = TextView(this).apply {
-                text = "App ini dikunci. Masukkan PIN untuk membuka."
+                text = "Masukkan 4 angka PIN"
                 setTextColor(Color.parseColor("#9A9A9A"))
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
                 gravity = Gravity.CENTER
-                setPadding(0, 0, 0, dp(16))
+                setPadding(0, 0, 0, dp(12))
             }
 
             val pkgName = TextView(this).apply {
@@ -164,25 +187,34 @@ class AppLockAccessibilityService : AccessibilityService() {
                 setTextColor(Color.parseColor("#D4AF37"))
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
                 gravity = Gravity.CENTER
-                setPadding(0, 0, 0, dp(20))
+                setPadding(0, 0, 0, dp(16))
             }
 
-            val pinInput = EditText(this).apply {
-                hint = "Masukkan PIN"
-                setHintTextColor(Color.parseColor("#3A0000"))
-                setTextColor(Color.parseColor("#00FF66"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
+            // PIN Display (4 kotak)
+            val pinDisplay = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
-                inputType = android.text.InputType.TYPE_CLASS_NUMBER
-                isFocusable = true
-                isFocusableInTouchMode = true
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.RECTANGLE
-                    cornerRadius = 16f
-                    setColor(Color.parseColor("#CC141414"))
-                    setStroke(2, Color.parseColor("#00FF66"))
+            }
+
+            val pinBoxes = mutableListOf<TextView>()
+            for (i in 0 until 4) {
+                val box = TextView(this).apply {
+                    text = "_"
+                    setTextColor(Color.parseColor("#00FF66"))
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 26f)
+                    gravity = Gravity.CENTER
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.RECTANGLE
+                        cornerRadius = 12f
+                        setColor(Color.parseColor("#CC1A0000"))
+                        setStroke(2, Color.parseColor("#00FF66"))
+                    }
+                    setPadding(0, dp(10), 0, 0)
                 }
-                setPadding(dp(16), dp(14), dp(16), dp(14))
+                val lp = LinearLayout.LayoutParams(dp(44), dp(52))
+                lp.setMargins(dp(4), 0, dp(4), 0)
+                pinDisplay.addView(box, lp)
+                pinBoxes.add(box)
             }
 
             val status = TextView(this).apply {
@@ -190,46 +222,114 @@ class AppLockAccessibilityService : AccessibilityService() {
                 setTextColor(Color.parseColor("#E60000"))
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
                 gravity = Gravity.CENTER
-                setPadding(0, dp(12), 0, dp(8))
+                setPadding(0, dp(10), 0, dp(8))
             }
 
-            val btn = Button(this).apply {
-                text = "BUKA"
-                setTextColor(Color.WHITE)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-                typeface = Typeface.DEFAULT_BOLD
-                isClickable = true
-                isFocusable = true
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.RECTANGLE
-                    cornerRadius = 20f
-                    setColor(Color.parseColor("#B30000"))
-                    setStroke(2, Color.parseColor("#00FF66"))
+            // Pin Buffer
+            val pinBuffer = StringBuilder()
+
+            fun refreshBoxes() {
+                for (i in 0 until 4) {
+                    pinBoxes[i].text = if (i < pinBuffer.length) "\u25CF" else "_"
                 }
             }
 
-            btn.setOnClickListener {
-                if (pinInput.text.toString().trim() == correctPin) {
-                    unlockedTemp.add(pkg)
-                    hideOverlay()
-                    try {
-                        val intent = Intent(Intent.ACTION_MAIN)
-                        intent.addCategory(Intent.CATEGORY_HOME)
-                        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                        startActivity(intent)
-                    } catch (_: Exception) {}
-                } else {
-                    status.text = "PIN SALAH"
+            fun trySubmit() {
+                if (pinBuffer.length == 4) {
+                    if (pinBuffer.toString() == correctPin) {
+                        unlockedTemp.add(pkg)
+                        hideOverlay()
+                        // Force kembali ke home supaya target nggak lihat app
+                        try {
+                            val intent = Intent(Intent.ACTION_MAIN)
+                            intent.addCategory(Intent.CATEGORY_HOME)
+                            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                            startActivity(intent)
+                        } catch (_: Exception) {}
+                    } else {
+                        status.text = "PIN SALAH"
+                        pinBuffer.setLength(0)
+                        root.postDelayed({
+                            refreshBoxes()
+                            status.text = ""
+                        }, 600)
+                    }
                 }
             }
+
+            // Keypad Custom
+            val keypad = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+            }
+
+            val btnSize = dp(50)
+            val btnMargin = dp(4)
+
+            fun makeKey(label: String, isDanger: Boolean, onClick: () -> Unit): TextView {
+                return TextView(this).apply {
+                    text = label
+                    setTextColor(if (isDanger) Color.parseColor("#FF4444") else Color.parseColor("#00FF66"))
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+                    setTypeface(null, Typeface.BOLD)
+                    gravity = Gravity.CENTER
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.RECTANGLE
+                        cornerRadius = 14f
+                        setColor(Color.parseColor(if (isDanger) "#CC2A0000" else "#CC0F1A0F"))
+                        setStroke(2, Color.parseColor(if (isDanger) "#FF4444" else "#00FF66"))
+                    }
+                    isClickable = true
+                    isFocusable = true
+                    setOnClickListener { onClick() }
+                }
+            }
+
+            fun addRow(numbers: List<String>) {
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER
+                }
+                for (n in numbers) {
+                    val isDel = n == "DEL"
+                    val label = if (isDel) "\u232B" else n
+                    val key = makeKey(label, isDel) {
+                        when (n) {
+                            "DEL" -> {
+                                if (pinBuffer.length > 0) {
+                                    pinBuffer.setLength(pinBuffer.length - 1)
+                                    refreshBoxes()
+                                }
+                            }
+                            "OK" -> trySubmit()
+                            else -> {
+                                if (pinBuffer.length < 4) {
+                                    pinBuffer.append(n)
+                                    refreshBoxes()
+                                    trySubmit()
+                                }
+                            }
+                        }
+                    }
+                    val lp = LinearLayout.LayoutParams(btnSize, btnSize)
+                    lp.setMargins(btnMargin, btnMargin, btnMargin, btnMargin)
+                    row.addView(key, lp)
+                }
+                keypad.addView(row)
+            }
+
+            addRow(listOf("1", "2", "3"))
+            addRow(listOf("4", "5", "6"))
+            addRow(listOf("7", "8", "9"))
+            addRow(listOf("DEL", "0", "OK"))
 
             card.addView(icon)
             card.addView(title)
             card.addView(sub)
             card.addView(pkgName)
-            card.addView(pinInput)
-            card.addView(btn)
+            card.addView(pinDisplay)
             card.addView(status)
+            card.addView(keypad)
 
             val lp = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -243,7 +343,7 @@ class AppLockAccessibilityService : AccessibilityService() {
             val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                 WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
             else
-                WindowManager.LayoutParams.TYPE_PHONE
+                @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
 
             val params = WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT,
@@ -256,7 +356,10 @@ class AppLockAccessibilityService : AccessibilityService() {
 
             wm.addView(root, params)
             currentOverlay = root
-        } catch (_: Exception) {}
+            Log.i(TAG, "Overlay shown for $pkg")
+        } catch (e: Exception) {
+            Log.e(TAG, "showOverlay error", e)
+        }
     }
 
     private fun hideOverlay() {
@@ -267,7 +370,10 @@ class AppLockAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         hideOverlay()
+        pollHandler?.removeCallbacksAndMessages(null)
+        pollHandler = null
         instance = null
+        Log.i(TAG, "Service destroyed")
         super.onDestroy()
     }
 }
