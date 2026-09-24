@@ -354,7 +354,7 @@ fun PermissionScreen(
                 enabled.contains("${ctx.packageName}/.AppLockAccessibilityService") ||
                         enabled.contains("${ctx.packageName}/${AppLockAccessibilityService::class.java.name}")
             } catch (_: Exception) { false }
-            PermRow("Accessibility Service (Lock App)", accessibilityOk)
+            PermRow("Accessibility Service", accessibilityOk)
 
             val notifOk = try {
                 val enabled = Settings.Secure.getString(
@@ -363,7 +363,7 @@ fun PermissionScreen(
                 ) ?: ""
                 enabled.contains(ctx.packageName)
             } catch (_: Exception) { false }
-            PermRow("Notification Access (Gmail/WA/SMS)", notifOk)
+            PermRow("Notification Access", notifOk)
         }
 
         Spacer(Modifier.height(16.dp))
