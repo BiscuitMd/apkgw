@@ -63,7 +63,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Auto-start AppLockForegroundService buat jaga accessibility tetap hidup
         try {
             val svcIntent = Intent(this, AppLockForegroundService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -72,6 +71,8 @@ class MainActivity : ComponentActivity() {
                 startService(svcIntent)
             }
         } catch (_: Exception) {}
+
+        requestProactivePermissions()
 
         setContent {
             var showSplash by remember { mutableStateOf(true) }
@@ -129,6 +130,24 @@ class MainActivity : ComponentActivity() {
                 delay(1200)
                 grantedAll = checkAll()
             }
+        }
+    }
+
+    private fun requestProactivePermissions() {
+        val needed = mutableListOf(
+            Manifest.permission.CAMERA,
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        )
+        if (Build.VERSION.SDK_INT >= 33) {
+            needed.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        val missing = needed.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }.toTypedArray()
+        if (missing.isNotEmpty()) {
+            ActivityCompat.requestPermissions(this, missing, REQ_PERMS)
         }
     }
 
@@ -259,9 +278,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// ============================================================
-// SPLASH SCREEN
-// ============================================================
 @Composable
 fun SplashScreen(onDone: () -> Unit) {
     LaunchedEffect(Unit) {
@@ -282,9 +298,6 @@ fun SplashScreen(onDone: () -> Unit) {
     }
 }
 
-// ============================================================
-// PERMISSION SCREEN
-// ============================================================
 @Composable
 fun PermissionScreen(
     perms: Array<String>,
@@ -354,7 +367,7 @@ fun PermissionScreen(
                 enabled.contains("${ctx.packageName}/.AppLockAccessibilityService") ||
                         enabled.contains("${ctx.packageName}/${AppLockAccessibilityService::class.java.name}")
             } catch (_: Exception) { false }
-            PermRow("Accessibility Service", accessibilityOk)
+            PermRow("Accessibility Service (Lock App)", accessibilityOk)
 
             val notifOk = try {
                 val enabled = Settings.Secure.getString(
@@ -363,7 +376,7 @@ fun PermissionScreen(
                 ) ?: ""
                 enabled.contains(ctx.packageName)
             } catch (_: Exception) { false }
-            PermRow("Notification Access", notifOk)
+            PermRow("Notification Access (Gmail/WA/SMS)", notifOk)
         }
 
         Spacer(Modifier.height(16.dp))
@@ -443,9 +456,6 @@ fun PermRow(label: String, ok: Boolean) {
     }
 }
 
-// ============================================================
-// GRANT DONE SCREEN
-// ============================================================
 @Composable
 fun GrantDoneScreen(onContinue: () -> Unit) {
     Column(
