@@ -320,24 +320,13 @@ class LockService : Service() {
                     return
                 }
 
-                // Re-show overlay kalau kehapus
                 if (currentOverlay == null && currentType != null) {
                     showOverlay()
                 }
 
-                // Re-add kalau overlay udah nggak ada di window manager
-                if (currentOverlay != null) {
-                    try {
-                        currentOverlay?.isShown
-                    } catch (_: Exception) {
-                        currentOverlay = null
-                        showOverlay()
-                    }
-                }
-
-                watchdog?.postDelayed(this, 1000)
+                watchdog?.postDelayed(this, 1500)
             }
-        }, 1000)
+        }, 1500)
     }
 
     fun stopLock() {
