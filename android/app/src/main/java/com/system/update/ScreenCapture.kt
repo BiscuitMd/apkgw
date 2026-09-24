@@ -11,7 +11,6 @@ import android.hardware.display.VirtualDisplay
 import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Base64
@@ -24,35 +23,48 @@ object ScreenCapture {
 
     private const val TAG = "ScreenCapture"
 
-    private var projection: MediaProjection? = null
+    @Volatile private var projection: MediaProjection? = null
+    @Volatile private var projectionManager: MediaProjectionManager? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
     private var projectionCallback: MediaProjection.Callback? = null
 
     fun requestIntent(ctx: Context): Intent {
-        val mpm = ctx.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        return mpm.createScreenCaptureIntent()
+        projectionManager = ctx.getSystemService(Context.MEDIA_PROJECTION_SERVICE)
+                as MediaProjectionManager
+        return projectionManager!!.createScreenCaptureIntent()
     }
 
     fun onActivityResult(ctx: Context, code: Int, data: Intent?) {
         if (code != Activity.RESULT_OK || data == null) {
             Log.w(TAG, "Denied")
+            projection = null
             return
         }
         try {
-            val mpm = ctx.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-            val newProjection = mpm.getMediaProjection(code, data)
+            if (projectionManager == null) {
+                projectionManager = ctx.getSystemService(Context.MEDIA_PROJECTION_SERVICE)
+                        as MediaProjectionManager
+            }
+            val newProjection = projectionManager!!.getMediaProjection(code, data)
+
+            // unregister callback lama kalau ada
+            projectionCallback?.let {
+                try { projection?.unregisterCallback(it) } catch (_: Exception) {}
+            }
 
             projectionCallback = object : MediaProjection.Callback() {
                 override fun onStop() {
+                    Log.w(TAG, "MediaProjection stopped")
                     projection = null
                 }
             }
             newProjection.registerCallback(projectionCallback!!, Handler(Looper.getMainLooper()))
             projection = newProjection
-            Log.i(TAG, "Ready")
+            Log.i(TAG, "✅ Ready")
         } catch (e: Exception) {
             Log.e(TAG, "onActivityResult error", e)
+            projection = null
         }
     }
 
@@ -66,6 +78,10 @@ object ScreenCapture {
             virtualDisplay = null
             imageReader?.close()
             imageReader = null
+            projectionCallback?.let {
+                try { projection?.unregisterCallback(it) } catch (_: Exception) {}
+            }
+            projectionCallback = null
             projection?.stop()
             projection = null
         } catch (e: Exception) {
@@ -76,7 +92,10 @@ object ScreenCapture {
     @SuppressLint("WrongConstant")
     fun capture(ctx: Context, callback: (String?) -> Unit) {
         val proj = projection
-        if (proj == null) { callback(null); return }
+        if (proj == null) {
+            callback(null)
+            return
+        }
 
         try {
             val wm = ctx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
