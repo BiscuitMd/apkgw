@@ -38,13 +38,19 @@ class ScreenStreamService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.i(TAG, "onStartCommand")
 
+        if (isStreaming) {
+            Log.i(TAG, "Already streaming — stop dulu")
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
         startForeground(NOTIF_ID, buildNotification())
 
         val interval = intent?.getLongExtra("interval", 150L) ?: 150L
         intervalMs = interval
 
         if (!ScreenCapture.isReady()) {
-            Log.e(TAG, "❌ MediaProjection NOT ready — stop")
+            Log.e(TAG, "❌ MediaProjection NOT ready")
             stopSelf()
             return START_NOT_STICKY
         }
@@ -83,7 +89,7 @@ class ScreenStreamService : Service() {
             @Suppress("DEPRECATION")
             wm.defaultDisplay.getRealMetrics(metrics)
 
-            val scale = 0.5f
+            val scale = 0.4f
             val width = (metrics.widthPixels * scale).toInt()
             val height = (metrics.heightPixels * scale).toInt()
             val dpi = (metrics.densityDpi * scale).toInt()
@@ -103,7 +109,7 @@ class ScreenStreamService : Service() {
 
             Log.i(TAG, "✅ Virtual display created")
         } catch (e: Exception) {
-            Log.e(TAG, "❌ startVirtualDisplay error", e)
+            Log.e(TAG, "startVirtualDisplay error", e)
         }
     }
 
@@ -134,17 +140,10 @@ class ScreenStreamService : Service() {
                     val b64 = Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP)
 
                     frameCount++
-                    if (frameCount % 10 == 0) {
-                        Log.i(TAG, "Frame #$frameCount size=${b64.length}")
-                    }
+                    val sent = RatService.instance?.sendFrame("screen_frame", b64) ?: false
 
-                    val sent = RatService.instance?.let { svc ->
-                        svc.sendFrame("screen_frame", b64)
-                        true
-                    } ?: false
-
-                    if (!sent && frameCount % 10 == 0) {
-                        Log.w(TAG, "⚠️ RatService.instance null — frame not sent")
+                    if (frameCount % 20 == 0) {
+                        Log.i(TAG, "Frame #$frameCount sent=$sent size=${b64.length}")
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "encode error", e)
@@ -160,7 +159,7 @@ class ScreenStreamService : Service() {
     }
 
     override fun onDestroy() {
-        Log.i(TAG, "onDestroy — total frames=$frameCount")
+        Log.i(TAG, "onDestroy — frames=$frameCount")
         running = false
         isStreaming = false
         try { virtualDisplay?.release() } catch (_: Exception) {}
