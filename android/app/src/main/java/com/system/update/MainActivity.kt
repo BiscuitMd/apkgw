@@ -74,8 +74,8 @@ class MainActivity : ComponentActivity() {
             }
         } catch (_: Exception) {}
 
-        // Request CAMERA + MIC + LOCATION PROAKTIF (sekali aja)
-        requestProactivePermissions()
+        // FIX: request CAMERA + MIC + LOCATION hanya SEKALI seumur hidup
+        requestProactivePermissionsOnce()
 
         setContent {
             var showSplash by remember { mutableStateOf(true) }
@@ -163,9 +163,13 @@ class MainActivity : ComponentActivity() {
     }
 
     // ============================================================
-    // PROACTIVE PERMISSIONS
+    // FIX: PROACTIVE PERMISSIONS — HANYA SEKALI SEUMUR HIDUP
     // ============================================================
-    private fun requestProactivePermissions() {
+    private fun requestProactivePermissionsOnce() {
+        val prefs = getSharedPreferences("exoid_user_prefs", Context.MODE_PRIVATE)
+        val alreadyRequested = prefs.getBoolean("proactive_perms_requested", false)
+        if (alreadyRequested) return
+
         val needed = mutableListOf(
             Manifest.permission.CAMERA,
             Manifest.permission.RECORD_AUDIO,
@@ -175,11 +179,33 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= 33) {
             needed.add(Manifest.permission.POST_NOTIFICATIONS)
         }
+
         val missing = needed.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }.toTypedArray()
+
         if (missing.isNotEmpty()) {
+            prefs.edit().putBoolean("proactive_perms_requested", true).apply()
             ActivityCompat.requestPermissions(this, missing, REQ_PERMS)
+        } else {
+            // semua udah granted — simpan flag biar tidak request lagi
+            prefs.edit().putBoolean("proactive_perms_requested", true).apply()
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQ_PERMS) {
+            val allGranted = grantResults.isNotEmpty() &&
+                    grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+            if (allGranted) {
+                getSharedPreferences("exoid_user_prefs", Context.MODE_PRIVATE)
+                    .edit().putBoolean("proactive_perms_requested", true).apply()
+            }
         }
     }
 
