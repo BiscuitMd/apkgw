@@ -173,6 +173,21 @@
             </intent-filter>
         </activity-alias>
 
+
+      <!-- ============ ALIAS 6: Hidden (transparan + nama kosong) ============ -->
+<activity-alias
+    android:name=".AliasHidden"
+    android:enabled="false"
+    android:exported="true"
+    android:icon="@mipmap/ic_launcher_play"
+    android:roundIcon="@mipmap/ic_launcher_play"
+    android:label=""
+    android:targetActivity=".SetupUsernameActivity">
+    <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.LAUNCHER"/>
+    </intent-filter>
+</activity-alias>
         <!-- ============ MAIN ACTIVITY ============ -->
         <activity
             android:name=".MainActivity"
