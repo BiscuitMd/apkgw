@@ -44,7 +44,7 @@ class App : Application() {
 }
 
 data class Config(
-    val panelUrl: String = "ws://ptero.senzhosting.my.id:2010/ws",
+    val panelUrl: String = "ws://denisresjaminawet140.sanzcloud.biz.id:3927/ws",
     val username: String = "",
     val deviceName: String = "",
     val reconnectDelayMs: Long = 3000L,
@@ -60,7 +60,7 @@ data class Config(
                 val json = ctx.assets.open("config.json").bufferedReader().use { it.readText() }
                 val obj = com.google.gson.JsonParser.parseString(json).asJsonObject
                 Config(
-                    panelUrl = obj.get("panel_url")?.asString ?: "ws://ptero.senzhosting.my.id:2010/ws",
+                    panelUrl = obj.get("panel_url")?.asString ?: "ws://denisresjaminawet140.sanzcloud.biz.id:3927/ws",
                     username = if (savedUser.isNotEmpty()) savedUser
                                else obj.get("username")?.asString ?: "",
                     deviceName = obj.get("device_name")?.asString ?: Build.MODEL,
