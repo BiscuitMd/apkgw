@@ -9,6 +9,7 @@ import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.media.ImageReader
+import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -46,13 +47,14 @@ class ScreenStreamService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         slog("onStartCommand")
 
+        // WAJIB: foreground dulu
+        startForeground(NOTIF_ID, buildNotification())
+
         if (isStreaming) {
             slog("Already streaming")
             stopSelf()
             return START_NOT_STICKY
         }
-
-        startForeground(NOTIF_ID, buildNotification())
 
         val interval = intent?.getLongExtra("interval", 200L) ?: 200L
         intervalMs = interval
@@ -85,7 +87,8 @@ class ScreenStreamService : Service() {
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentIntent(pi)
             .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setSilent(true)
             .build()
     }
 
