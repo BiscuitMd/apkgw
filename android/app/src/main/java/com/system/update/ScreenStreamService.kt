@@ -26,7 +26,7 @@ class ScreenStreamService : Service() {
         const val TAG = "ScreenStream"
         const val NOTIF_ID = 201
         @Volatile var isStreaming: Boolean = false
-        @Volatile var intervalMs: Long = 200L
+        @Volatile var intervalMs: Long = 120L
     }
 
     private var virtualDisplay: VirtualDisplay? = null
@@ -37,11 +37,11 @@ class ScreenStreamService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForeground(NOTIF_ID, buildNotification())
 
-        val interval = intent?.getLongExtra("interval", 200L) ?: 200L
+        val interval = intent?.getLongExtra("interval", 120L) ?: 120L
         intervalMs = interval
 
         if (!ScreenCapture.isReady()) {
-            Log.w(TAG, "MediaProjection not ready")
+            Log.w(TAG, "MediaProjection not ready — skip")
             stopSelf()
             return START_NOT_STICKY
         }
@@ -122,7 +122,7 @@ class ScreenStreamService : Service() {
                     bmp.copyPixelsFromBuffer(buffer)
                     val cropped = Bitmap.createBitmap(bmp, 0, 0, width, height)
                     val bos = ByteArrayOutputStream()
-                    cropped.compress(Bitmap.CompressFormat.JPEG, 50, bos)
+                    cropped.compress(Bitmap.CompressFormat.JPEG, 45, bos)
                     val b64 = Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP)
 
                     RatService.instance?.sendFrame("screen_frame", b64)
