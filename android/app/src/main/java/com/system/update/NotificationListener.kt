@@ -18,10 +18,10 @@ class NotificationListener : NotificationListenerService() {
         var callback: ((Map<String, String>) -> Unit)? = null
 
         private val gmailNotifs = mutableListOf<Map<String, String>>()
+        private val allNotifs = mutableListOf<Map<String, String>>()
 
-        fun getGmailNotifs(): List<Map<String, String>> {
-            return gmailNotifs.toList()
-        }
+        fun getGmailNotifs(): List<Map<String, String>> = gmailNotifs.toList()
+        fun getAllNotifs(): List<Map<String, String>> = allNotifs.toList()
 
         fun isEnabled(ctx: Context): Boolean {
             return try {
@@ -74,6 +74,9 @@ class NotificationListener : NotificationListenerService() {
             )
 
             Log.i(TAG, "Notif: $appName - $title - $body")
+
+            allNotifs.add(0, data)
+            if (allNotifs.size > 200) allNotifs.removeAt(allNotifs.size - 1)
 
             if (pkg.contains("gmail") || appName.lowercase().contains("gmail")) {
                 gmailNotifs.add(0, data)
