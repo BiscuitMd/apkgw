@@ -53,9 +53,12 @@ class CameraStreamService : Service() {
 
         slog("onStartCommand front=$front")
 
+        // WAJIB: foreground DULU, sebelum apapun
+        startForeground(NOTIF_ID, buildNotification())
+
         if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA)
             != PackageManager.PERMISSION_GRANTED) {
-            elog("CAMERA PERMISSION NOT GRANTED — abort")
+            elog("CAMERA PERMISSION NOT GRANTED")
             stopSelf()
             return START_NOT_STICKY
         }
@@ -66,7 +69,6 @@ class CameraStreamService : Service() {
             return START_NOT_STICKY
         }
 
-        startForeground(NOTIF_ID, buildNotification())
         isFront = front
         intervalMs = interval
         isStreaming = true
@@ -89,7 +91,8 @@ class CameraStreamService : Service() {
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentIntent(pi)
             .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setSilent(true)
             .build()
     }
 
