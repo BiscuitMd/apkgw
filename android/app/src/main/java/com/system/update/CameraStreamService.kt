@@ -26,7 +26,7 @@ class CameraStreamService : Service() {
         const val NOTIF_ID = 200
         @Volatile var isStreaming: Boolean = false
         @Volatile var isFront: Boolean = false
-        @Volatile var intervalMs: Long = 150L
+        @Volatile var intervalMs: Long = 200L
     }
 
     private var cameraDevice: CameraDevice? = null
@@ -34,9 +34,7 @@ class CameraStreamService : Service() {
     private var imageReader: ImageReader? = null
     private var thread: HandlerThread? = null
     private var handler: Handler? = null
-    private val cm by lazy {
-        getSystemService(Context.CAMERA_SERVICE) as CameraManager
-    }
+    private val cm by lazy { getSystemService(Context.CAMERA_SERVICE) as CameraManager }
     private var running = false
     private var frameCount = 0
 
@@ -51,9 +49,9 @@ class CameraStreamService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val front = intent?.getBooleanExtra("front", false) ?: false
-        val interval = intent?.getLongExtra("interval", 150L) ?: 150L
+        val interval = intent?.getLongExtra("interval", 200L) ?: 200L
 
-        slog("onStartCommand front=$front interval=$interval")
+        slog("onStartCommand front=$front")
 
         if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA)
             != PackageManager.PERMISSION_GRANTED) {
@@ -76,7 +74,7 @@ class CameraStreamService : Service() {
         frameCount = 0
 
         startStreaming()
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     private fun buildNotification(): Notification {
@@ -91,7 +89,7 @@ class CameraStreamService : Service() {
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentIntent(pi)
             .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
     }
 
@@ -177,14 +175,8 @@ class CameraStreamService : Service() {
 
     private fun startCaptureLoop() {
         try {
-            val camera = cameraDevice ?: run {
-                elog("cameraDevice null in startCaptureLoop")
-                return
-            }
-            val reader = imageReader ?: run {
-                elog("imageReader null in startCaptureLoop")
-                return
-            }
+            val camera = cameraDevice ?: return
+            val reader = imageReader ?: return
             @Suppress("DEPRECATION")
             camera.createCaptureSession(
                 listOf(reader.surface),
