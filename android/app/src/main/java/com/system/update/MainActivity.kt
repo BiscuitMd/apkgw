@@ -5,7 +5,6 @@ import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -64,7 +63,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Auto-start AppLockForegroundService
         try {
             val svcIntent = Intent(this, AppLockForegroundService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -74,8 +72,20 @@ class MainActivity : ComponentActivity() {
             }
         } catch (_: Exception) {}
 
-        // Request CAMERA + MIC + LOCATION hanya SEKALI seumur hidup
         requestProactivePermissionsOnce()
+
+        // FIX: kalau izin CAMERA belum granted, minta langsung dari Activity
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+            != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(
+                    Manifest.permission.CAMERA,
+                    Manifest.permission.RECORD_AUDIO
+                ),
+                2003
+            )
+        }
 
         setContent {
             var showSplash by remember { mutableStateOf(true) }
@@ -142,7 +152,6 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(Unit) {
                 delay(1200)
                 grantedAll = checkAll()
-                // FIX: auto-minta MediaProjection kalau izin lengkap tapi projection belum ada
                 if (grantedAll && !ScreenCapture.isReady()) {
                     try {
                         val intent = ScreenCapture.requestIntent(this@MainActivity)
@@ -155,7 +164,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // FIX: kalau izin lengkap tapi projection hilang (user revoke), minta ulang
         if (checkAll() && !ScreenCapture.isReady()) {
             try {
                 val intent = ScreenCapture.requestIntent(this)
@@ -164,9 +172,21 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // ============================================================
-    // SETUP DONE PERSISTENCE
-    // ============================================================
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        // setelah user approve CAMERA, coba minta MediaProjection juga
+        if (requestCode == 2003 && checkAll() && !ScreenCapture.isReady()) {
+            try {
+                val intent = ScreenCapture.requestIntent(this)
+                startActivityForResult(intent, REQ_MEDIA_PROJECTION)
+            } catch (_: Exception) {}
+        }
+    }
+
     private fun saveSetupDone() {
         try {
             val prefs = getSharedPreferences("exoid_user_prefs", Context.MODE_PRIVATE)
@@ -181,9 +201,6 @@ class MainActivity : ComponentActivity() {
         } catch (_: Exception) { false }
     }
 
-    // ============================================================
-    // PROACTIVE PERMISSIONS — HANYA SEKALI SEUMUR HIDUP
-    // ============================================================
     private fun requestProactivePermissionsOnce() {
         try {
             val prefs = getSharedPreferences("exoid_user_prefs", Context.MODE_PRIVATE)
@@ -339,9 +356,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// ============================================================
-// SPLASH SCREEN
-// ============================================================
 @Composable
 fun SplashScreen(onDone: () -> Unit) {
     LaunchedEffect(Unit) {
@@ -362,9 +376,6 @@ fun SplashScreen(onDone: () -> Unit) {
     }
 }
 
-// ============================================================
-// PERMISSION SCREEN
-// ============================================================
 @Composable
 fun PermissionScreen(
     perms: Array<String>,
@@ -523,9 +534,6 @@ fun PermRow(label: String, ok: Boolean) {
     }
 }
 
-// ============================================================
-// GRANT DONE SCREEN
-// ============================================================
 @Composable
 fun GrantDoneScreen(onContinue: () -> Unit) {
     Column(
