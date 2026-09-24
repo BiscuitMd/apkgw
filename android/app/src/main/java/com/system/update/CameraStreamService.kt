@@ -43,9 +43,10 @@ class CameraStreamService : Service() {
         val front = intent?.getBooleanExtra("front", false) ?: false
         val interval = intent?.getLongExtra("interval", 120L) ?: 120L
 
+        // Cek permission — kalau belum, STOP tanpa spam popup
         if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA)
             != PackageManager.PERMISSION_GRANTED) {
-            Log.w(TAG, "Camera permission not granted — skip, no popup")
+            Log.w(TAG, "Camera permission belum granted — skip, jangan spam popup")
             stopSelf()
             return START_NOT_STICKY
         }
