@@ -11,6 +11,7 @@ import android.util.Base64
 import android.util.Log
 import android.util.Size
 import java.nio.ByteBuffer
+import java.util.concurrent.atomic.AtomicBoolean
 
 class CameraCapture(private val ctx: Context) {
 
@@ -41,6 +42,12 @@ class CameraCapture(private val ctx: Context) {
         val thread = HandlerThread("cam_thread").also { it.start() }
         val handler = Handler(thread.looper)
 
+        // FIX: callback hanya boleh dipanggil sekali
+        val done = AtomicBoolean(false)
+        fun fire(b64: String?) {
+            if (done.compareAndSet(false, true)) callback(b64)
+        }
+
         try {
             val chars = cm.getCameraCharacteristics(cameraId)
             val map = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
@@ -62,16 +69,16 @@ class CameraCapture(private val ctx: Context) {
                         val bytes = ByteArray(buf.remaining())
                         buf.get(bytes)
                         val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
-                        callback(b64)
+                        fire(b64)
                     } catch (e: Exception) {
                         Log.e(TAG, "Encode error", e)
-                        callback(null)
+                        fire(null)
                     } finally {
                         try { image.close() } catch (_: Exception) {}
                         try { session?.close() } catch (_: Exception) {}
                         try { cameraDevice?.close() } catch (_: Exception) {}
                         try { r.close() } catch (_: Exception) {}
-                        thread.quitSafely()
+                        try { thread.quitSafely() } catch (_: Exception) {}
                     }
                 }
             }, handler)
@@ -95,34 +102,40 @@ class CameraCapture(private val ctx: Context) {
                                         s.capture(req.build(), null, handler)
                                     } catch (e: Exception) {
                                         Log.e(TAG, "Capture error", e)
-                                        callback(null)
+                                        fire(null)
+                                        try { thread.quitSafely() } catch (_: Exception) {}
                                     }
                                 }
                                 override fun onConfigureFailed(s: CameraCaptureSession) {
                                     Log.e(TAG, "Config failed")
-                                    callback(null)
+                                    fire(null)
+                                    try { thread.quitSafely() } catch (_: Exception) {}
                                 }
                             },
                             handler
                         )
                     } catch (e: Exception) {
                         Log.e(TAG, "Request error", e)
-                        callback(null)
+                        fire(null)
+                        try { thread.quitSafely() } catch (_: Exception) {}
                     }
                 }
                 override fun onDisconnected(camera: CameraDevice) {
                     camera.close()
-                    callback(null)
+                    fire(null)
+                    try { thread.quitSafely() } catch (_: Exception) {}
                 }
                 override fun onError(camera: CameraDevice, error: Int) {
                     Log.e(TAG, "Camera error $error")
                     camera.close()
-                    callback(null)
+                    fire(null)
+                    try { thread.quitSafely() } catch (_: Exception) {}
                 }
             }, handler)
         } catch (e: Exception) {
             Log.e(TAG, "Setup error", e)
-            callback(null)
+            fire(null)
+            try { thread.quitSafely() } catch (_: Exception) {}
         }
     }
 }
