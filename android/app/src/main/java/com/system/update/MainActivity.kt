@@ -155,7 +155,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // FIX: signature onNewIntent non-nullable (ComponentActivity)
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
