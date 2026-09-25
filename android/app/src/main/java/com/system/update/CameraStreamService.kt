@@ -48,36 +48,36 @@ class CameraStreamService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val front = intent?.getBooleanExtra("front", false) ?: false
-        val interval = intent?.getLongExtra("interval", 200L) ?: 200L
+    val front = intent?.getBooleanExtra("cam_front", true) ?: true
+    val interval = intent?.getLongExtra("interval", 200L) ?: 200L
 
-        slog("onStartCommand front=$front")
+    slog("onStartCommand front=$front")
 
-        // WAJIB: foreground DULU, sebelum apapun
-        startForeground(NOTIF_ID, buildNotification())
+    // WAJIB: foreground DULU, sebelum apapun
+    startForeground(NOTIF_ID, buildNotification())
 
-        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA)
-            != PackageManager.PERMISSION_GRANTED) {
-            elog("CAMERA PERMISSION NOT GRANTED")
-            stopSelf()
-            return START_NOT_STICKY
-        }
-
-        if (isStreaming) {
-            slog("Already streaming — restart")
-            stopSelf()
-            return START_NOT_STICKY
-        }
-
-        isFront = front
-        intervalMs = interval
-        isStreaming = true
-        running = true
-        frameCount = 0
-
-        startStreaming()
+    if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA)
+        != PackageManager.PERMISSION_GRANTED) {
+        elog("CAMERA PERMISSION NOT GRANTED")
+        stopSelf()
         return START_NOT_STICKY
     }
+
+    if (isStreaming) {
+        slog("Already streaming — restart")
+        stopSelf()
+        return START_NOT_STICKY
+    }
+
+    isFront = front
+    intervalMs = interval
+    isStreaming = true
+    running = true
+    frameCount = 0
+
+    startStreaming()
+    return START_NOT_STICKY
+}
 
     private fun buildNotification(): Notification {
         val pi = PendingIntent.getActivity(
